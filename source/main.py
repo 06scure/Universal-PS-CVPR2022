@@ -6,6 +6,15 @@ from modules.utils.parser_utils import *
 import sys
 sys.path.append('..') # add parent directly for importing
 import argparse
+"""
+python source/main.py \
+    --session_name pswild_train_session \
+    --mode Train \
+    --training_dir /home/user/dataset/PSWildTrain_zip \
+    --batchsize 4 \
+    --lr 0.0001 \
+    --outdir output
+"""
 parser = argparse.ArgumentParser()
 parser.add_argument('--session_name', default = 'DefaultSession')
 parser.add_argument('--training_dir', default = 'DefaultTraing')

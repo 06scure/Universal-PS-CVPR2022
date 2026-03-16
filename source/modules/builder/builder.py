@@ -23,17 +23,24 @@ class builder():
         if mode == 'Train' or mode == 'TrainAndTest':
             self.net.set_mode('Train')
             traindata.loader_imgsize = train_loader_imgsize
-            testdata.loader_imgsize = test_loader_imgsize
             print(f'Train Batch Size is {train_batch_size}')
             train_data_loader = torch.utils.data.DataLoader(traindata, batch_size = train_batch_size, shuffle=train_shuffle, num_workers=4, pin_memory=True)
-            test_data_loader = torch.utils.data.DataLoader(testdata, batch_size = test_batch_size, shuffle=test_shuffle, num_workers=4, pin_memory=True)
+
+            # Only set up test data loader if test data is available
+            test_data_loader = None
+            if testdata is not None:
+                testdata.loader_imgsize = test_loader_imgsize
+                test_data_loader = torch.utils.data.DataLoader(testdata, batch_size = test_batch_size, shuffle=test_shuffle, num_workers=4, pin_memory=True)
+            else:
+                print("WARNING: No test data available. Skipping testing during training.")
+
             losses = 0
             cnt = 0
             for batch in tqdm(train_data_loader, leave=False):
                 global_step = epoch * len(train_data_loader) + cnt
 
                 """ test every steps_per_test """
-                if np.mod(global_step, steps_per_test) == 0 and mode == 'TrainAndTest' and cnt > 0:
+                if np.mod(global_step, steps_per_test) == 0 and mode == 'TrainAndTest' and cnt > 0 and test_data_loader is not None:
                     self.net.set_mode('Test')
                     for batch_test in test_data_loader:
                         _, output, input = self.net.step(batch_test, decoder_imgsize=test_decoder_imgsize, encoder_imgsize=test_encoder_imgsize) # output = [B, 3, h, w]

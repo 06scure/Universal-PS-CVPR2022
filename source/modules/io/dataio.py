@@ -42,11 +42,44 @@ class dataio(data.Dataset):
         self.objlist = []
         for i in range(len(data_root)):
             print('Initialize %s' % (data_root[i]))
+
+            # Check if data root exists
+            if not os.path.exists(data_root[i]):
+                print(f"ERROR: Data root does not exist: {data_root[i]}", file=sys.stderr)
+                print(f"Please check your --{mode.lower()}_dir parameter!", file=sys.stderr)
+                sys.exit(1)
+
+            if not os.path.isdir(data_root[i]):
+                print(f"ERROR: Data root is not a directory: {data_root[i]}", file=sys.stderr)
+                sys.exit(1)
+
+            # List contents of the directory for debugging
+            contents = os.listdir(data_root[i])
+            print(f"Contents of {data_root[i]}: {len(contents)} items")
+            if len(contents) > 0:
+                print(f"First few items: {contents[:min(5, len(contents))]}")
+
+            # Search recursively for directories with the specified extension
+            search_pattern = data_root[i] + '/**/*%s' % extension
+            print(f"Searching recursively for directories with pattern: {search_pattern}")
+
             objlist = []
-            [objlist.append(p) for p in glob.glob(data_root[i] + '/*%s' % extension, recursive=True) if os.path.isdir(p)]
+            for p in glob.glob(search_pattern, recursive=True):
+                if os.path.isdir(p):
+                    objlist.append(p)
+
             objlist = sorted(objlist)
             self.objlist = self.objlist + objlist
+
         print(f"Number of {mode} set is {len(self.objlist)}")
+
+        # Check if we have any data
+        if len(self.objlist) == 0:
+            print(f"ERROR: No data found for {mode} mode!", file=sys.stderr)
+            print(f"Please check your data directory structure and extension settings.", file=sys.stderr)
+            print(f"Expected directory extension: {extension}", file=sys.stderr)
+            print(f"Searched recursively in: {data_root}", file=sys.stderr)
+            sys.exit(1)
 
 
         if self.datatype == 'AdobeNPI':
