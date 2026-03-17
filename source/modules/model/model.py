@@ -366,7 +366,8 @@ class Net():
             mask_high = m
 
         output_low = F.interpolate(0.5*(nout_low+1) * mask_low, scale_factor = 4 * decoder_imgsize[0]/encoder_imgsize[0], mode='bilinear', align_corners=False)
-        output = torch.cat([output_low, 0.5*(nout_high+1)* mask_high], dim=3)
+        output_high = 0.5*(nout_high+1)* mask_high
+        output = torch.cat([output_low, output_high], dim=3)
         output = F.interpolate(output, size=None, scale_factor = 2.0, mode='bilinear', align_corners=False)
         input = F.relu(img.permute(0, 2, 3, 1, 4).reshape(-1, img.shape[2], img.shape[3], img.shape[4] * img.shape[1]))
         input[input > 1] = 1

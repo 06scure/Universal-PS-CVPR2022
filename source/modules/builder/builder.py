@@ -44,8 +44,32 @@ class builder():
                     self.net.set_mode('Test')
                     for batch_test in test_data_loader:
                         _, output, input = self.net.step(batch_test, decoder_imgsize=test_decoder_imgsize, encoder_imgsize=test_encoder_imgsize) # output = [B, 3, h, w]
+                        # 保存输入和完整输出（左右拼接）
                         cv2.imwrite(f'{testdata.data.data_workspace}/input.png', 255 * input[0,:,:,:].transpose(1,2,0)[:,:,::-1])
                         cv2.imwrite(f'{testdata.data.data_workspace}/normal.png', 255 * output[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+
+                        # 单独保存右侧的高分辨率normal图（主要输出）
+                        h, w = output.shape[2], output.shape[3]
+                        output_high = output[0,:,:,w//2:].transpose(1,2,0)
+
+                        # 使用原始mask裁剪背景（从testdata.data中获取）
+                        if hasattr(testdata.data, 'mask'):
+                            mask_img = testdata.data.mask
+
+                            # 处理mask的维度（可能是(h,w)或(h,w,1)或(1,h,w)）
+                            if len(mask_img.shape) == 3:
+                                if mask_img.shape[0] == 1:
+                                    mask_img = mask_img[0]  # (1, h, w)
+                                elif mask_img.shape[2] == 1:
+                                    mask_img = mask_img[:, :, 0]  # (h, w, 1)
+
+                            # 确保mask尺寸与输出一致
+                            mask_high = cv2.resize(mask_img, (output_high.shape[1], output_high.shape[0]),
+                                                  interpolation=cv2.INTER_NEAREST)
+
+                            output_high = output_high * mask_high[:, :, np.newaxis]
+
+                        cv2.imwrite(f'{testdata.data.data_workspace}/normal_highres.png', 255 * output_high[:,:,::-1])
                     self.net.set_mode('Train')
                     savedir = writer.outdir + '/checkpoint/current'
                     self.net.save_models(savedir)
@@ -70,7 +94,33 @@ class builder():
             test_data_loader = torch.utils.data.DataLoader(testdata, batch_size = test_batch_size, shuffle=test_shuffle, num_workers=0, pin_memory=True)
             for i, batch in enumerate(test_data_loader):
                 global_step = epoch * len(test_data_loader) + cnt
+                mask = batch[2]  # 获取原始mask (B, 1, H, W)
                 _, output, input = self.net.step(batch, decoder_imgsize=test_decoder_imgsize, encoder_imgsize=test_encoder_imgsize) # output = [B, 3, h, w]
+
+                # 保存输入和完整输出（左右拼接）
                 cv2.imwrite(f'{testdata.data.data_workspace}/input.png', 255 * input[0,:,:,:].transpose(1,2,0)[:,:,::-1])
                 cv2.imwrite(f'{testdata.data.data_workspace}/normal.png', 255 * output[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+
+                # 单独保存右侧的高分辨率normal图（主要输出）
+                h, w = output.shape[2], output.shape[3]
+                output_high = output[0,:,:,w//2:].transpose(1,2,0)
+
+                # 使用原始mask裁剪背景（从testdata.data中获取）
+                if hasattr(testdata.data, 'mask'):
+                    mask_img = testdata.data.mask
+
+                    # 处理mask的维度（可能是(h,w)或(h,w,1)或(1,h,w)）
+                    if len(mask_img.shape) == 3:
+                        if mask_img.shape[0] == 1:
+                            mask_img = mask_img[0]  # (1, h, w)
+                        elif mask_img.shape[2] == 1:
+                            mask_img = mask_img[:, :, 0]  # (h, w, 1)
+
+                    # 确保mask尺寸与输出一致
+                    mask_high = cv2.resize(mask_img, (output_high.shape[1], output_high.shape[0]),
+                                          interpolation=cv2.INTER_NEAREST)
+
+                    output_high = output_high * mask_high[:, :, np.newaxis]
+
+                cv2.imwrite(f'{testdata.data.data_workspace}/normal_highres.png', 255 * output_high[:,:,::-1])
                 cnt +=1

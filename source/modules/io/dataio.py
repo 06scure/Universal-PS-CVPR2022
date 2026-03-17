@@ -69,6 +69,13 @@ class dataio(data.Dataset):
                     objlist.append(p)
 
             objlist = sorted(objlist)
+
+            # 限制推理数量（仅在Test模式下生效）
+            if mode == 'Test' and hasattr(args, 'test_limit') and args.test_limit is not None:
+                if len(objlist) > args.test_limit:
+                    print(f"Limiting test objects from {len(objlist)} to {args.test_limit}")
+                    objlist = objlist[:args.test_limit]
+
             self.objlist = self.objlist + objlist
 
         print(f"Number of {mode} set is {len(self.objlist)}")

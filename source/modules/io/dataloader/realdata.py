@@ -118,7 +118,20 @@ class dataloader():
                     if flag == True:
                         mask = np.float32(cv2.resize(mask, dsize=(h, w),interpolation=cv2.INTER_NEAREST))
                 elif os.path.isfile(mask_path) == False and i == 0:
-                    mask = np.ones((h, w), np.float32)
+                    # 尝试从normal.tif生成mask（如果没有mask.png）
+                    nml_path = img_dir + '/normal.tif'
+                    if os.path.isfile(nml_path):
+                        N = cv2.imread(nml_path, flags = cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH)
+                        if len(N.shape) == 3:
+                            N = cv2.cvtColor(N, cv2.COLOR_BGR2RGB)
+                        N = np.float32(N) / (255.0 if N.dtype == np.uint8 else 65535.0)
+                        N = 2 * N - 1  # 映射到[-1, 1]
+
+                        mask = np.abs(1 - np.sqrt(np.sum(N * N, axis=2))) < 1.0e-3
+                        mask = cv2.resize(mask.astype(np.float32), dsize=(h, w), interpolation=cv2.INTER_NEAREST)
+                    else:
+                        mask = np.ones((h, w), np.float32)
+
                     flag = False
                     rowmin = 0
                     rowmax = h

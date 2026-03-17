@@ -11,9 +11,19 @@ python source/main.py \
     --session_name pswild_train_session \
     --mode Train \
     --training_dir /home/user/dataset/PSWildTrain_zip \
-    --batchsize 4 \
+    --batchsize 1 \
     --lr 0.0001 \
     --outdir output
+
+python source/main.py \
+    --session_name pswild_test_session \
+    --mode Test \
+    --training_dir /home/user/dataset/PSWildTrain_zip \
+    --test_dir /home/user/dataset/PSWildTrain_zip \
+    --pretrained /home/user/code/Universal-PS-CVPR2022/output/pswild_train_session/checkpoint/20260317_014433 \
+    --batchsize 1 \
+    --outdir output \
+    --test_limit 10
 """
 parser = argparse.ArgumentParser()
 parser.add_argument('--session_name', default = 'DefaultSession')
@@ -32,6 +42,7 @@ parser.add_argument('--args', default=None)
 parser.add_argument('--lr_scheduler', default='step')
 parser.add_argument('--lr_init_scale', type=float, default=1.0)
 parser.add_argument('--encoder_imgsize', type=int, default=256)
+parser.add_argument('--test_limit', type=int, default=None, help='Limit the number of objects to test (for quick testing)')
 
 
 def main():
@@ -53,7 +64,7 @@ def main():
     print("Decoder:Prediction")
     print_model_parameters(trainObj.net.prediction)
     if args.mode in ('TrainAndTest','Train'):
-        epochs = 20
+        epochs = 10
     else:
         epochs = 1
     for epoch in range(epochs):
