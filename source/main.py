@@ -10,7 +10,8 @@ import argparse
 python source/main.py \
     --session_name pswild_train_session \
     --mode Train \
-    --training_dir /home/user/dataset/PSWildTrain_zip \
+    --training_dir /home/user/dataset/PSWild \
+    --pretrained output/pswild_train_session/checkpoint/20260317_014433 \
     --batchsize 1 \
     --lr 0.0001 \
     --outdir output
@@ -18,8 +19,8 @@ python source/main.py \
 python source/main.py \
     --session_name pswild_test_session \
     --mode Test \
-    --training_dir /home/user/dataset/PSWildTrain_zip \
-    --test_dir /home/user/dataset/PSWildTrain_zip \
+    --training_dir /home/user/dataset/PSWild \
+    --test_dir /home/user/dataset/PSWild \
     --pretrained /home/user/code/Universal-PS-CVPR2022/output/pswild_train_session/checkpoint/20260317_014433 \
     --batchsize 1 \
     --outdir output \
