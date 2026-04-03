@@ -9,6 +9,7 @@ from .utils import *
 class dataio(data.Dataset):
     def __init__(self, mode, args, conf, outdir):
 
+        self.mode = mode  # 保存模式信息
 
         if mode == 'Train':
             data_root = [args.training_dir]
@@ -90,7 +91,7 @@ class dataio(data.Dataset):
 
 
         if self.datatype == 'AdobeNPI':
-            self.data = adobenpi.dataloader(self.numberOfImageBuffer)
+            self.data = adobenpi.dataloader(self.numberOfImageBuffer, is_training=(self.mode == 'Train'), outdir=self.outdir)
         elif self.datatype == 'RealData':
             self.data = realdata.dataloader(self.numberOfImageBuffer, self.outdir)
         else:

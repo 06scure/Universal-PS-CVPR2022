@@ -4,7 +4,9 @@ from modules.utils.logger import *
 from modules.utils.parser_utils import *
 
 def prepare_model_data(args, conf, device):
-    log = logger(args, 'TrainTest')
+    # 仅在 Train 或 TrainAndTest 模式下启用 swanlab
+    use_swanlab = args.mode in ('Train', 'TrainAndTest')
+    log = logger(args, 'TrainTest', use_swanlab=use_swanlab)
     trainObj = builder.builder(args, conf, device)
     trainData = dataio.dataio('Train', args, conf, log.outdir)
 

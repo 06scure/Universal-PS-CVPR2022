@@ -17,14 +17,17 @@ python source/main.py \
     --outdir output
 
 python source/main.py \
-    --session_name pswild_test_session \
+    --session_name pswild_test_session_2 \
     --mode Test \
     --training_dir /home/user/dataset/PSWild \
     --test_dir /home/user/dataset/PSWild \
-    --pretrained /home/user/code/Universal-PS-CVPR2022/output/pswild_train_session/checkpoint/20260317_014433 \
+    --pretrained /home/user/code/Universal-PS-CVPR2022/output/pswild_train_session/checkpoint/20260403_091145 \
     --batchsize 1 \
     --outdir output \
     --test_limit 10
+
+
+    法向量图被输入了！训练的有问题
 """
 parser = argparse.ArgumentParser()
 parser.add_argument('--session_name', default = 'DefaultSession')
