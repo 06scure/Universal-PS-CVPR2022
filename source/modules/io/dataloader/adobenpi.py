@@ -51,8 +51,10 @@ def quantize_augumentation(I):
 
 
 class dataloader():
-    def __init__(self, numberOfImages = None):
+    def __init__(self, numberOfImages = None, is_training=False, outdir='.'):
         self.numberOfImages = numberOfImages
+        self.is_training = is_training
+        self.outdir = outdir
 
     def psfcn_normalize(self, imgs): # [NLight, H, W ,C]
         h, w, c = imgs[0].shape
@@ -69,8 +71,10 @@ class dataloader():
         scale = 1.0
 
         self.objname = objlist[objid].split('/')[-1]
+        self.data_workspace = f'{self.outdir}/{self.objname}'
+        os.makedirs(self.data_workspace, exist_ok=True)
         directlist = []
-        [directlist.append(p) for p in glob.glob(objlist[objid] + '/%s' % prefix,recursive=True) if os.path.isfile(p)]
+        [directlist.append(p) for p in glob.glob(objlist[objid] + '/%s' % prefix,recursive=True) if os.path.isfile(p) and 'normal.tif' not in p]
         directlist = sorted(directlist)
 
 
@@ -99,6 +103,8 @@ class dataloader():
         else:
             indexset = range(len(directlist))
 
+        actual_num_images = len(indexset)  # 实际加载的图片数量
+
         for i, indexofimage in enumerate(indexset):
             img_path = directlist[indexofimage]
             if i == 0:
@@ -123,8 +129,9 @@ class dataloader():
             img = np.float32(img) / bit_depth
 
             if i == 0:
-                mask = []
-                I = np.zeros((len(indexset), h, w, 3), np.float32)
+                mask = None
+                N = None
+                I = np.zeros((actual_num_images, h, w, 3), np.float32)
             I[i, :, :, :] = img
             nml_path = img_dir + '/normal.tif'
 
@@ -133,33 +140,40 @@ class dataloader():
                 N = 2 * N - 1
                 mask = np.abs(1 - np.sqrt(np.sum(N * N, axis=2))) < 1.0e-3
 
+        # 如果没有加载到 normal 和 mask，创建默认值
+        if mask is None:
+            print(f"Warning: normal.tif not found at {nml_path}, using default mask")
+            mask = np.ones((h, w), dtype=np.bool_)
+        if N is None:
+            N = np.zeros((h, w, 3), dtype=np.float32)
+
         I = np.reshape(I, (-1, h * w, 3))
-        if len(mask) == 0:
-            print(nml_path)
         I[:, mask.flatten()==0, :] = 0
 
 
         temp = np.mean(I[:, mask.flatten()==1,:], axis=2)
         mean = np.mean(temp, axis=1)
-        
+
         """Normalization of Data"""
         I /= mean.reshape(-1,1,1)
         I = np.transpose(I, (1, 2, 0))
-        I = I.reshape(h, w, 3, self.numberOfImages)
+        I = I.reshape(h, w, 3, actual_num_images)  # 使用实际数量
         mask = (mask.reshape(h, w, 1)).astype(np.float32) # h, w, w
 
         h = h0
         w = w0
 
-        prob = 0.5
-        if np.random.rand() > prob:
-            I, N, mask = horizontal_flip(I, N, mask)
-        if np.random.rand() > prob:
-            I, N, mask = vertical_flip(I, N, mask)
-        if np.random.rand() > prob:
-            I, N, mask = rotate(I, N, mask)
-        if np.random.rand() > prob:
-            I = color_swap(I)
+        # 只在训练时做数据增强
+        if self.is_training:
+            prob = 0.5
+            if np.random.rand() > prob:
+                I, N, mask = horizontal_flip(I, N, mask)
+            if np.random.rand() > prob:
+                I, N, mask = vertical_flip(I, N, mask)
+            if np.random.rand() > prob:
+                I, N, mask = rotate(I, N, mask)
+            if np.random.rand() > prob:
+                I = color_swap(I)
 
 
 
