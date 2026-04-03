@@ -5,8 +5,6 @@ from modules.model import model
 import datetime
 import cv2
 
-
-
 class builder():
     def __init__(self, args, conf, device):
         self.img_channels = conf.img_channels
@@ -42,11 +40,20 @@ class builder():
                 """ test every steps_per_test """
                 if np.mod(global_step, steps_per_test) == 0 and mode == 'TrainAndTest' and cnt > 0 and test_data_loader is not None:
                     self.net.set_mode('Test')
-                    for batch_test in test_data_loader:
+                    for batch_idx, batch_test in enumerate(test_data_loader):
                         _, output, input = self.net.step(batch_test, decoder_imgsize=test_decoder_imgsize, encoder_imgsize=test_encoder_imgsize) # output = [B, 3, h, w]
+
+                        # 确定保存目录 - 使用testdata.data.data_workspace（如果已设置）或testdata.outdir
+                        save_dir = testdata.outdir
+                        if hasattr(testdata.data, 'data_workspace') and testdata.data.data_workspace:
+                            save_dir = testdata.data.data_workspace
+                        elif hasattr(testdata.data, 'objname') and testdata.data.objname:
+                            save_dir = f"{testdata.outdir}/{testdata.data.objname}"
+                        os.makedirs(save_dir, exist_ok=True)
+
                         # 保存输入和完整输出（左右拼接）
-                        cv2.imwrite(f'{testdata.data.data_workspace}/input.png', 255 * input[0,:,:,:].transpose(1,2,0)[:,:,::-1])
-                        cv2.imwrite(f'{testdata.data.data_workspace}/normal.png', 255 * output[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+                        cv2.imwrite(f'{save_dir}/input.png', 255 * input[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+                        cv2.imwrite(f'{save_dir}/normal.png', 255 * output[0,:,:,:].transpose(1,2,0)[:,:,::-1])
 
                         # 单独保存右侧的高分辨率normal图（主要输出）
                         h, w = output.shape[2], output.shape[3]
@@ -69,7 +76,7 @@ class builder():
 
                             output_high = output_high * mask_high[:, :, np.newaxis]
 
-                        cv2.imwrite(f'{testdata.data.data_workspace}/normal_highres.png', 255 * output_high[:,:,::-1])
+                        cv2.imwrite(f'{save_dir}/normal_highres.png', 255 * output_high[:,:,::-1])
                     self.net.set_mode('Train')
                     savedir = writer.outdir + '/checkpoint/current'
                     self.net.save_models(savedir)
@@ -90,6 +97,10 @@ class builder():
             cnt = 0
             global_step = epoch
             self.net.set_mode('Test')
+            if testdata is None:
+                print("ERROR: No test data available for Test mode!")
+                print("Please check your --test_dir parameter and ensure the data exists.")
+                return
             testdata.loader_imgsize = test_loader_imgsize
             test_data_loader = torch.utils.data.DataLoader(testdata, batch_size = test_batch_size, shuffle=test_shuffle, num_workers=0, pin_memory=True)
             for i, batch in enumerate(test_data_loader):
@@ -97,9 +108,17 @@ class builder():
                 mask = batch[2]  # 获取原始mask (B, 1, H, W)
                 _, output, input = self.net.step(batch, decoder_imgsize=test_decoder_imgsize, encoder_imgsize=test_encoder_imgsize) # output = [B, 3, h, w]
 
+                # 确定保存目录 - 使用testdata.data.data_workspace（如果已设置）或testdata.outdir
+                save_dir = testdata.outdir
+                if hasattr(testdata.data, 'data_workspace') and testdata.data.data_workspace:
+                    save_dir = testdata.data.data_workspace
+                elif hasattr(testdata.data, 'objname') and testdata.data.objname:
+                    save_dir = f"{testdata.outdir}/{testdata.data.objname}"
+                os.makedirs(save_dir, exist_ok=True)
+
                 # 保存输入和完整输出（左右拼接）
-                cv2.imwrite(f'{testdata.data.data_workspace}/input.png', 255 * input[0,:,:,:].transpose(1,2,0)[:,:,::-1])
-                cv2.imwrite(f'{testdata.data.data_workspace}/normal.png', 255 * output[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+                cv2.imwrite(f'{save_dir}/input.png', 255 * input[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+                cv2.imwrite(f'{save_dir}/normal.png', 255 * output[0,:,:,:].transpose(1,2,0)[:,:,::-1])
 
                 # 单独保存右侧的高分辨率normal图（主要输出）
                 h, w = output.shape[2], output.shape[3]
@@ -122,5 +141,5 @@ class builder():
 
                     output_high = output_high * mask_high[:, :, np.newaxis]
 
-                cv2.imwrite(f'{testdata.data.data_workspace}/normal_highres.png', 255 * output_high[:,:,::-1])
+                cv2.imwrite(f'{save_dir}/normal_highres.png', 255 * output_high[:,:,::-1])
                 cnt +=1

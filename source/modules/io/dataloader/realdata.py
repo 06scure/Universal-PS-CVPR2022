@@ -9,6 +9,8 @@ class dataloader():
     def __init__(self, numberOfImages = None, outdir = '.'):
         self.numberOfImages = numberOfImages
         self.outdir = outdir
+        self.data_workspace = outdir  # 初始化默认值
+        self.objname = ''
 
     def img_tile(self, imgs, rows, cols, outdir): # [N, h, w, c]
         n, h, w, c = np.shape(imgs)
@@ -53,7 +55,17 @@ class dataloader():
 
         directlist = []
         [directlist.append(p) for p in glob.glob(objlist[objid] + '/%s' % prefix,recursive=True) if os.path.isfile(p)]
-        directlist = sorted(directlist)
+        # 过滤掉真值文件和mask文件（只保留数字命名的输入图片，如 001.png, 002.png）
+        filtered_list = []
+        for p in directlist:
+            filename = os.path.basename(p)
+            # 跳过真值文件和mask文件
+            if filename.lower() in ['normal_gt.png', 'mask.png', 'normal.png']:
+                continue
+            # 只接受数字开头的文件名（如 001.png）
+            if filename.split('.')[0].isdigit():
+                filtered_list.append(p)
+        directlist = sorted(filtered_list)
         distort = True
 
 

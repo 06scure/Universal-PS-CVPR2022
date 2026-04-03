@@ -9,25 +9,24 @@ import argparse
 """
 python source/main.py \
     --session_name pswild_train_session \
-    --mode Train \
+    --mode TrainAndTest \
     --training_dir /home/user/dataset/PSWild \
-    --pretrained output/pswild_train_session/checkpoint/20260317_014433 \
+    --pretrained output/pswild_train_session/checkpoint/20260403_091145 \
+    --test_dir /home/user/dataset/DiLiGenT/pmsData \
     --batchsize 1 \
     --lr 0.0001 \
     --outdir output
 
 python source/main.py \
-    --session_name pswild_test_session_2 \
+    --session_name diligent_test_2 \
     --mode Test \
     --training_dir /home/user/dataset/PSWild \
-    --test_dir /home/user/dataset/PSWild \
+    --test_dir /home/user/dataset/DiLiGenT/pmsData \
     --pretrained /home/user/code/Universal-PS-CVPR2022/output/pswild_train_session/checkpoint/20260403_091145 \
     --batchsize 1 \
     --outdir output \
     --test_limit 10
 
-
-    法向量图被输入了！训练的有问题
 """
 parser = argparse.ArgumentParser()
 parser.add_argument('--session_name', default = 'DefaultSession')
@@ -68,14 +67,27 @@ def main():
     print("Decoder:Prediction")
     print_model_parameters(trainObj.net.prediction)
     if args.mode in ('TrainAndTest','Train'):
-        epochs = 10
+        epochs = 20
     else:
         epochs = 1
     for epoch in range(epochs):
         print(f'Run {epoch+1}-th epoch')
-        trainObj.run(args.mode, epoch=epoch, writer=logger,steps_per_test = 200,\
-                    traindata=trainData, train_batch_size=args.batchsize, train_shuffle=True, train_loader_imgsize=(512, 512), train_encoder_imgsize=(args.encoder_imgsize, args.encoder_imgsize), train_decoder_imgsize=(512, 512),\
-                    testdata=testData, test_batch_size=1, test_shuffle=False, test_loader_imgsize=(512, 512), test_encoder_imgsize=(256,256), test_decoder_imgsize=(512, 512))
+        trainObj.run(args.mode, 
+                     epoch=epoch, 
+                     writer=logger,
+                     steps_per_test = 200,
+                     traindata=trainData, 
+                     train_batch_size=args.batchsize, 
+                     train_shuffle=True, 
+                     train_loader_imgsize=(512, 512), 
+                     train_encoder_imgsize=(args.encoder_imgsize, args.encoder_imgsize), 
+                     train_decoder_imgsize=(512, 512),
+                     testdata=testData, 
+                     test_batch_size=1, 
+                     test_shuffle=False, 
+                     test_loader_imgsize=(512, 512), 
+                     test_encoder_imgsize=(256,256), 
+                     test_decoder_imgsize=(512, 512))
 
 if __name__ == '__main__':
     main()
