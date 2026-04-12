@@ -51,10 +51,8 @@ def quantize_augumentation(I):
 
 
 class dataloader():
-    def __init__(self, numberOfImages = None, is_training=False, outdir='.'):
+    def __init__(self, numberOfImages = None):
         self.numberOfImages = numberOfImages
-        self.is_training = is_training
-        self.outdir = outdir
 
     def psfcn_normalize(self, imgs): # [NLight, H, W ,C]
         h, w, c = imgs[0].shape
@@ -71,8 +69,6 @@ class dataloader():
         scale = 1.0
 
         self.objname = objlist[objid].split('/')[-1]
-        self.data_workspace = f'{self.outdir}/{self.objname}'
-        os.makedirs(self.data_workspace, exist_ok=True)
         directlist = []
         [directlist.append(p) for p in glob.glob(objlist[objid] + '/%s' % prefix,recursive=True) if os.path.isfile(p) and 'normal.tif' not in p]
         directlist = sorted(directlist)
@@ -163,17 +159,15 @@ class dataloader():
         h = h0
         w = w0
 
-        # 只在训练时做数据增强
-        if self.is_training:
-            prob = 0.5
-            if np.random.rand() > prob:
-                I, N, mask = horizontal_flip(I, N, mask)
-            if np.random.rand() > prob:
-                I, N, mask = vertical_flip(I, N, mask)
-            if np.random.rand() > prob:
-                I, N, mask = rotate(I, N, mask)
-            if np.random.rand() > prob:
-                I = color_swap(I)
+        prob = 0.5
+        if np.random.rand() > prob:
+            I, N, mask = horizontal_flip(I, N, mask)
+        if np.random.rand() > prob:
+            I, N, mask = vertical_flip(I, N, mask)
+        if np.random.rand() > prob:
+            I, N, mask = rotate(I, N, mask)
+        if np.random.rand() > prob:
+            I = color_swap(I)
 
 
 

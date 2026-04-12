@@ -1,3 +1,4 @@
+import sys
 from .model_utils import *
 from ..utils.ind2sub import *
 import os
@@ -125,8 +126,8 @@ class Encoder(nn.Module):
 class Net():
     def __init__(self, args, device):
         self.device = device
-        self.min_nimg = args.min_nimg
-        self.num_samples = args.num_samples
+        self.min_nimg = args.min_nimg   # 输入图像
+        self.num_samples = args.num_samples # 采样像素
         self.model_name = args.session_name
         self.num_agg_enc = args.num_agg_enc
         self.agg_type = args.agg_type
@@ -217,6 +218,15 @@ class Net():
         self.optimizer_prediction = loadoptimizer(self.optimizer_prediction, optimizer[0])
 
     def step(self, batch, decoder_imgsize, encoder_imgsize=None):
+        """
+        Args:
+            batch: [img, nml, mask]
+                img: [B, N, 3, H, W]
+                nml: [B, 3, H, W]
+                mask: [B, 1, H, W]
+            decoder_imgsize: (H, W) tuple for the final prediction resolution
+            encoder_imgsize: (H, W) tuple for the resolution fed into the encoder;
+        """
 
         img = batch[0].permute(0, 4, 1, 2, 3).to(self.device)# B N C H W
         nml = batch[1].to(self.device)

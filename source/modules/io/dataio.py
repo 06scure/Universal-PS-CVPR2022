@@ -1,5 +1,6 @@
 import glob
 import os,sys
+from typing import Optional
 import torch.utils.data as data
 from .dataloader import adobenpi
 from .dataloader import realdata
@@ -37,7 +38,7 @@ class dataio(data.Dataset):
         self.dataCount = 0
         self.dataLength = -1
         self.mode = mode
-        self.loader_imgsize = None
+        self.loader_imgsize:Optional[tuple[int,int]] = None
 
 
         self.objlist = []
@@ -72,10 +73,10 @@ class dataio(data.Dataset):
             objlist = sorted(objlist)
 
             # 限制推理数量（仅在Test模式下生效）
-            if mode == 'Test' and hasattr(args, 'test_limit') and args.test_limit is not None:
-                if len(objlist) > args.test_limit:
-                    print(f"Limiting test objects from {len(objlist)} to {args.test_limit}")
-                    objlist = objlist[:args.test_limit]
+            if mode == 'Test' and hasattr(args, 'min_nimg') and args.min_nimg is not None:
+                if len(objlist) > args.min_nimg:
+                    print(f"Limiting test objects from {len(objlist)} to {args.min_nimg}")
+                    objlist = objlist[:args.min_nimg]
 
             self.objlist = self.objlist + objlist
 
@@ -91,7 +92,7 @@ class dataio(data.Dataset):
 
 
         if self.datatype == 'AdobeNPI':
-            self.data = adobenpi.dataloader(self.numberOfImageBuffer, is_training=(self.mode == 'Train'), outdir=self.outdir)
+            self.data = adobenpi.dataloader(self.numberOfImageBuffer)
         elif self.datatype == 'RealData':
             self.data = realdata.dataloader(self.numberOfImageBuffer, self.outdir)
         else:
@@ -99,8 +100,14 @@ class dataio(data.Dataset):
 
 
     def __getitem__(self, index_):
-
-
+        """
+        Args:
+            index_ (int): 数据索引
+        Returns:
+            img (torch.Tensor): 图像数据，形状为 (C, H, W, N)
+            nml (torch.Tensor): 法线数据，形状为 (3, H, W)
+            mask (torch.Tensor): 前景掩码，形状为 (1, H, W)
+        """
         objid = index_
         if self.datatype == 'AdobeNPI':
             self.data.load(self.objlist, objid, prefix = self.prefix)
