@@ -1,9 +1,7 @@
-import glob
 import os
 import cv2
+import glob
 import numpy as np
-import os
-
 
 def horizontal_flip(I, N, M): # [? h, w, ? ...]
     I = I[:, ::-1, :, :]
@@ -62,7 +60,6 @@ class dataloader():
         img = img / (norm.reshape(-1,1) + 1e-10)
         imgs = np.split(img, img.shape[1], axis=1)
         imgs = [img.reshape(h, w, -1) for img in imgs]
-        print('PSFCN_NORMALIZED')
         return imgs
 
     def load(self, objlist, objid,  prefix):
@@ -72,7 +69,6 @@ class dataloader():
         directlist = []
         [directlist.append(p) for p in glob.glob(objlist[objid] + '/%s' % prefix,recursive=True) if os.path.isfile(p) and 'normal.tif' not in p]
         directlist = sorted(directlist)
-
 
         if len(directlist) == 0:
             return False
@@ -116,7 +112,6 @@ class dataloader():
             else:
                 img = cv2.resize(cv2.cvtColor(cv2.imread(img_path, flags = cv2.IMREAD_ANYCOLOR | cv2.IMREAD_ANYDEPTH), cv2.COLOR_BGR2RGB), dsize=None, fx=scale, fy=scale,interpolation=cv2.INTER_NEAREST)
 
-
             if img.dtype == 'uint8':
                 bit_depth = 255.0
             if img.dtype == 'uint16':
@@ -136,16 +131,14 @@ class dataloader():
                 N = 2 * N - 1
                 mask = np.abs(1 - np.sqrt(np.sum(N * N, axis=2))) < 1.0e-3
 
-        # 如果没有加载到 normal 和 mask，创建默认值
         if mask is None:
             print(f"Warning: normal.tif not found at {nml_path}, using default mask")
             mask = np.ones((h, w), dtype=np.bool_)
         if N is None:
-            N = np.zeros((h, w, 3), dtype=np.float32)
+            raise RuntimeError(f"Error: normal image not found at {nml_path}")
 
         I = np.reshape(I, (-1, h * w, 3))
         I[:, mask.flatten()==0, :] = 0
-
 
         temp = np.mean(I[:, mask.flatten()==1,:], axis=2)
         mean = np.mean(temp, axis=1)
@@ -168,8 +161,6 @@ class dataloader():
             I, N, mask = rotate(I, N, mask)
         if np.random.rand() > prob:
             I = color_swap(I)
-
-
 
         h = mask.shape[0]
         w = mask.shape[1]

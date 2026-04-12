@@ -1,6 +1,3 @@
-import torch.nn as nn
-import torch
-import math
 import numpy as np
 
 # def random_light_sampling(L, minLightNum, maxLightNum, minLightRadius = 20, maxLightRadius = 90):

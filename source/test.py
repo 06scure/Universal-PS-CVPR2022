@@ -5,6 +5,7 @@ import argparse
 from tqdm import tqdm
 from modules.io import dataio
 from modules.model import model
+from modules.config import config
 from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
@@ -44,14 +45,8 @@ def main():
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
     # 初始化超参数
-    class set_conf():
-        def __init__(self):
-            self.test_suffix = 'PNG' # 测试数据的图像文件后缀
-            self.test_maxNumberOfImages = 10 # 测试时每个物体数量
-            self.test_datatype = 'RealData' # 测试数据集类型
-            self.test_prefix = '*.png' # 测试数据前缀
+    conf = config.TestConfig()  # 从 config 模块获取配置对象
 
-    conf = set_conf()
     # 初始化数据集读取
     test_data = dataio.dataio('Test', args, conf, args.outdir)
     if test_data is None:

@@ -1,4 +1,3 @@
-import numpy as np
 import torch
 """array_shape (rows, cols)
 ind = row * cols + col

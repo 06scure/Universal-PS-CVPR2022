@@ -1,4 +1,3 @@
-import sys
 from .model_utils import *
 from ..utils.ind2sub import *
 import os
@@ -7,7 +6,6 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.init import kaiming_normal_, trunc_normal_
-
 
 from .utils import Transformer
 from .utils.folked import swin_transformer
@@ -38,6 +36,7 @@ class PredictionHead(nn.Module):
                 elif isinstance(m, nn.LayerNorm):
                     m.bias.data.zero_()
                     m.weight.data.fill_(1.0)
+
     def forward(self, x):
         return self.regression(x)
 
@@ -93,11 +92,12 @@ class Encoder(nn.Module):
         return conv
 
     def forward(self, x):
-        """Standard forward
-        INPUT: img [B, N, Cin, H, W]
-        OUTPUT: [B, N, Cout, H/4, W/4]
         """
-
+        Arg:
+            image [B, N, C, H, W]
+        Return:
+            feature [B, N, Cout, H/4, W/4]
+        """
         feats = []
         for k in range(x.shape[1]):
             feats.append(self.backbone(x[:, k, :, :, :]))
@@ -145,25 +145,21 @@ class Net():
         self.prediction = PredictionHead(dim_aggout, 3).to(self.device) # No urcainty
         [self.prediction, self.optimizer_prediction, self.scheduler_prediction] = optimizer_setup_AdamW(self.prediction, lr = lr, init=True, stype=stype)
         self.criterionL2 = nn.MSELoss(reduction = 'sum').to(self.device)
-        print(f'Session {self.model_name}: #images >= {self.min_nimg}, #samples = {self.num_samples}')
 
     def set_mode(self, mode):
         if  mode in 'Train':
-            print(f'{self.model_name}, TrainMode')
             self.mode = 'Train'
             mode_change(self.encoder, True)
             mode_change(self.aggregation, True)
             mode_change(self.prediction, True)
 
         elif mode in 'Test':
-            print(f'{self.model_name}, TestMode')
             self.mode = 'Test'
             mode_change(self.encoder, False)
             mode_change(self.aggregation, False)
             mode_change(self.prediction, False)
         else:
-            print("Mode must be from [Train, Validation, Test]", file=sys.stderr)
-            sys.exit(1)
+            raise ValueError("Mode must be from [Train, Validation, Test]")
 
     def scale_lr(self, scale):
         print('learning rate updated  %.5f -> %.5f' % (self.optimizer_encoder.param_groups[0]['lr'], self.optimizer_encoder.param_groups[0]['lr'] * scale))

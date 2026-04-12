@@ -1,7 +1,6 @@
 import os
 import torch
 import numpy as np
-from torch.nn.parallel import DistributedDataParallel as DDP
 
 def loadmodel(model, filename):
     params = torch.load('%s' % filename)
@@ -81,7 +80,6 @@ def mode_change(net, Training):
             param.requires_grad = False
         net.eval()
 
-
 def get_n_params(model):
     pp=0
     for p in list(model.parameters()):
@@ -105,8 +103,6 @@ def saveCheckpoint(save_path, epoch=-1, model=None, optimizer=None, records=None
     torch.save(state, os.path.join(save_path, 'checkp_%d.pth.tar' % (epoch)))
     torch.save(records, os.path.join(save_path, 'checkp_%d_rec.pth.tar' % (epoch)))
 
-
-
 def masking(img, mask):
     # img [B, C, H, W]
     # mask [B, 1, H, W] [0,1]
@@ -116,7 +112,6 @@ def masking(img, mask):
 def print_model_parameters(model):
     model_parameters = filter(lambda p: p.requires_grad, model.parameters())
     params = sum([np.prod(p.size()) for p in model_parameters])
-
 
     print('# parameters: %d' % params)
 
@@ -136,7 +131,8 @@ def angular_error(x1, x2, mask = None):
         return error
 
 def write_errors(filepath, error, trainid, numimg, objname = []):
-    dt_now = datetime.datetime.now()
+    from datetime import datetime
+    dt_now = datetime.now()
     print(filepath)
 
     if len(objname) > 0:
@@ -145,9 +141,3 @@ def write_errors(filepath, error, trainid, numimg, objname = []):
     else:
         with open(filepath, 'a') as f:
             f.write('%s %03d %02d %.2f\n' % (dt_now, numimg, trainid, error))
-
-
-def save_nparray_as_hdf5(self, a, filename):
-    h5f = h5py.File(filename, 'w')
-    h5f.create_dataset('dataset_1', data=a)
-    h5f.close()

@@ -6,6 +6,7 @@ from tqdm import tqdm
 from datetime import datetime
 from modules.io import dataio
 from modules.model import model
+from modules.config import config
 from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
@@ -54,14 +55,7 @@ def main():
     )
 
     # 初始化超参数
-    class set_conf():
-        def __init__(self):
-            self.train_suffix = 'data' # 训练数据的图像文件后缀
-            self.train_maxNumberOfImages = 10 # 训练时每个物体数量
-            self.train_datatype = 'AdobeNPI' # 训练数据集类型
-            self.train_prefix = '*.tif' # 训练数据前缀
-
-    conf = set_conf()
+    conf = config.TrainConfig()
 
     # 初始化数据集读取
     train_data = dataio.dataio('Train', args, conf, args.outdir)
