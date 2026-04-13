@@ -3,6 +3,7 @@ from ..utils.ind2sub import *
 import os
 import glob
 import torch
+import logging
 import torch.nn as nn
 from torch.nn import functional as F
 from torch.nn.init import kaiming_normal_, trunc_normal_
@@ -10,6 +11,8 @@ from torch.nn.init import kaiming_normal_, trunc_normal_
 from .utils import Transformer
 from .utils.folked import swin_transformer
 from .utils.folked import uper
+
+logger = logging.getLogger(__name__)
 
 class PredictionHead(nn.Module):
     def __init__(self, dim_input, dim_output):
@@ -222,14 +225,20 @@ class Net():
                 mask: [B, 1, H, W]
             decoder_imgsize: (H, W) tuple for the final prediction resolution
             encoder_imgsize: (H, W) tuple for the resolution fed into the encoder;
+        Return:
+            - loss: scalar loss value for backpropagation / evaluation
+            - normal_map: [B, 3, H, W] tensor for visualization, where the 3 channels are predicted normals mapped to [0, 1]
+            - error_map: [B, 1, H, W] tensor for visualization, where the single channel is the per-pixel normal error (L2 distance to GT normal)
         """
 
+        # dataloader 输出的多视角图像维度是 [B, H, N, C, W]，这里统一转成 [B, N, C, H, W]
         img = batch[0].permute(0, 4, 1, 2, 3).to(self.device)# B N C H W
         nml = batch[1].to(self.device)
         mask = batch[2].to(self.device) # B 1 H W
 
         min_nimg = self.min_nimg
         if self.mode in 'Train' and img.shape[1] >= min_nimg:
+            # 训练阶段随机抽取部分输入视角，增强模型对输入视角数量变化的鲁棒性
             numI = np.random.randint(img.shape[1]-min_nimg+1)+min_nimg
             imgid = np.random.permutation(range(img.shape[1]))[:numI]
             img = img[:, imgid, :, :, :]
@@ -242,14 +251,16 @@ class Net():
         H = img.shape[3]
         W = img.shape[4]
         if encoder_imgsize is None:
+            # 编码器输入由“masked RGB + mask”拼接而成，共 4 个通道
             data = torch.cat([img * mask.unsqueeze(1).expand(-1, img.shape[1], -1, -1, -1), mask.unsqueeze(1).expand(-1, img.shape[1], -1, -1, -1)], dim=2)
         else:
+            # 如果指定了 encoder_imgsize，则先把图像/掩码缩放到编码器分辨率再送入 backbone
             img_ = img.reshape(-1, C, H, W)
             img_ = F.interpolate(img_, size=encoder_imgsize, mode='bilinear', align_corners=False).reshape(B, N, C, encoder_imgsize[0], encoder_imgsize[1])
             mask_ = F.interpolate(mask, size=encoder_imgsize, mode='nearest')
             data = torch.cat([img_ * mask_.unsqueeze(1).expand(-1, img.shape[1], -1, -1, -1), mask_.unsqueeze(1).expand(-1, img.shape[1], -1, -1, -1)], dim=2)
 
-        feats = self.encoder(data) # torch.Size([B, N, 256, H/4, W/4]) [img, mask]
+        feats = self.encoder(data) # [B, N, 256, H/4, W/4]，每个视角一张特征图
 
         """Process at Canonical Resolution"""
         B = feats.shape[0]
@@ -261,28 +272,34 @@ class Net():
         img_ = img.reshape(-1, img.shape[2], img.shape[3], img.shape[4])
         img_ = F.interpolate(img_, size= (H, W), mode='bilinear', align_corners=False).reshape(img.shape[0], img.shape[1], img.shape[2], H, W)
         m = F.interpolate(mask, size = (H, W), mode='nearest')
+        # GT 法线也被缩放到 canonical resolution，并重新归一化到单位球面
         n = F.normalize(F.interpolate(nml, size = (H, W), mode='bilinear', align_corners=False), p=2, dim=1)
 
-        loss = 0
+        loss = torch.tensor(0.0, device=self.device)
         nout = torch.zeros(B, H * W, 3).to(self.device)
 
         for b in range(B):
+            # m_: 每个像素是否有效；n_: 对应像素的 GT normal
             m_ = m[b, :, :, :].reshape(-1, H * W).permute(1,0)
             n_ = n[b, :, :, :].reshape(-1, H * W).permute(1,0)
             ids = np.nonzero(m_>0)[:,0]
+            # f: 每个有效像素在 N 个视角上的 encoder 特征，形状 [num_valid, N, C]
             f = feats[b, :, :, :, :].reshape(-1, C, H * W).permute(2, 0, 1)
             f = f[ids, :, :]
             n_ = n_[ids, :]
+            # o: 每个有效像素在 N 个视角上的 RGB 观测，形状 [num_valid, N, 3]
             o = img_[b, :, :, :, :].reshape(-1, 3, H * W).permute(2, 0, 1)
             o = o[ids, :, :]
-            x = torch.cat([o, f], dim=2) 
+            # 聚合器输入是 [RGB, feature] 的拼接，沿着视角维进行跨视图融合
+            x = torch.cat([o, f], dim=2)
             feat_gg = self.aggregation(x)
             out_nml = self.prediction(feat_gg)
             nout_ = F.normalize(out_nml[:, :3],dim=1, p=2)
-            nout[b, ids, :] = nout_            
+            nout[b, ids, :] = nout_
             loss += self.criterionL2(nout_, n_) / len(ids)
-        nout_low = nout.permute(0, 2, 1).reshape(B, 3, H, W)
-        mask_low = m
+
+        # nout_low = nout.permute(0, 2, 1).reshape(B, 3, H, W)
+        # mask_low = m
 
         """Prediction at Original Resolution"""
         img_ = img.reshape(-1, img.shape[2], img.shape[3], img.shape[4])
@@ -306,6 +323,7 @@ class Net():
 
                 ids = np.nonzero(m_>0)[:,0]
                 if len(ids) > numMaxSamples:
+                    # 高分辨率阶段只随机采样部分有效像素，避免显存/算力开销过大
                     ids = ids[np.random.permutation(len(ids))][:numMaxSamples]
 
                 coords = ind2coords((H, W), ids)
@@ -315,6 +333,7 @@ class Net():
 
                 x = []
                 for k in range(N):
+                    # 用 grid_sample 在高分辨率坐标处双线性采样低分辨率 encoder 特征
                     f = F.grid_sample(feat[[k], :, :, :], coords.to(self.device), mode='bilinear', align_corners=False).squeeze().permute(1,0)
                     o = img_[b, k, :, :, :]
                     o = o.reshape(o.shape[0], o.shape[1] * o.shape[2]).permute(1,0)
@@ -328,7 +347,7 @@ class Net():
                 nout[b, ids, :] = nout_
 
                 loss += self.criterionL2(nout_, n_) / len(ids)
-           
+
 
             self.optimizer_encoder.zero_grad()
             self.optimizer_aggregation.zero_grad()
@@ -342,13 +361,14 @@ class Net():
 
         if self.mode in 'Test':
             nout = torch.zeros(B, H * W, 3).to(self.device)
-            loss = torch.Tensor([0])
+            loss = torch.tensor(0.0, device=self.device)
             numMaxSamples = 10000
             for b in range(B):
                 m_ = m[b, :, :, :].reshape(-1, H * W).permute(1,0)
                 n_ = n[b, :, :, :].reshape(-1, H * W).permute(1,0)
                 ids = np.nonzero(m_>0)[:,0].cpu()
                 if len(ids) > 10000:
+                    # 测试时不随机丢点，而是分块处理所有有效像素，避免一次性推理过大
                     num_split = len(ids) // 10000
                     ids = np.array_split(ids, num_split)
                 else:
@@ -371,11 +391,11 @@ class Net():
             nout_high = nout.permute(0, 2, 1).reshape(B, 3, H, W)
             mask_high = m
 
-        output_low = F.interpolate(0.5*(nout_low+1) * mask_low, scale_factor = 4 * decoder_imgsize[0]/encoder_imgsize[0], mode='bilinear', align_corners=False)
-        output_high = 0.5*(nout_high+1)* mask_high
-        output = torch.cat([output_low, output_high], dim=3)
-        output = F.interpolate(output, size=None, scale_factor = 2.0, mode='bilinear', align_corners=False)
-        input = F.relu(img.permute(0, 2, 3, 1, 4).reshape(-1, img.shape[2], img.shape[3], img.shape[4] * img.shape[1]))
-        input[input > 1] = 1
+        # 返回可视化结果
+        normal_map = 0.5 * (nout_high + 1) * mask_high
 
-        return loss.cpu().detach().numpy(), output.cpu().detach().numpy(), input.cpu().detach().numpy()
+        dot = torch.sum(nout_high * n, dim=1, keepdim=True).clamp(-1.0 + 1.0e-12, 1.0 - 1.0e-12)
+        error_map = (torch.acos(dot) * 180.0 / torch.pi) * mask_high
+
+        mae = angular_error(nout_high, n, mask_high)
+        return loss.detach().cpu().item(),mae , normal_map.detach().cpu().numpy(), error_map.detach().cpu().numpy()

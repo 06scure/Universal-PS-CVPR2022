@@ -116,19 +116,25 @@ def print_model_parameters(model):
     print('# parameters: %d' % params)
 
 
-def angular_error(x1, x2, mask = None):
-
+def angular_error(x1, x2, mask=None):
     if mask is not None:
         dot = torch.sum(x1 * x2 * mask, dim=1, keepdim=True)
-        dot = torch.max(torch.min(dot, torch.Tensor([1.0-1.0e-12])), torch.Tensor([-1.0+1.0e-12]))
-        emap = torch.abs(180 * torch.acos(dot)/np.pi) * mask
-        mae = torch.sum(emap) / torch.sum(mask)
-        return mae
-    if mask is None:
+    else:
         dot = torch.sum(x1 * x2, dim=1, keepdim=True)
-        dot = torch.max(torch.min(dot, torch.Tensor([1.0-1.0e-12])), torch.Tensor([-1.0+1.0e-12]))
-        error = torch.abs(180 * torch.acos(dot)/np.pi)
-        return error
+
+    eps = 1e-12
+    dot = torch.clamp(dot, -1.0 + eps, 1.0 - eps)
+
+    # 计算角度 (弧度转角度)
+    error = torch.acos(dot) * (180.0 / np.pi)
+    error = torch.abs(error)
+
+    # 4. 处理返回结果
+    if mask is not None:
+        mae = torch.sum(error * mask) / (torch.sum(mask) + 1e-8) # 加个极小值防止除零
+        return mae
+    
+    return error
 
 def write_errors(filepath, error, trainid, numimg, objname = []):
     from datetime import datetime
