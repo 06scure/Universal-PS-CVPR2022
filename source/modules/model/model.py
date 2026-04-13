@@ -228,7 +228,7 @@ class Net():
         Return:
             - loss: scalar loss value for backpropagation / evaluation
             - normal_map: [B, 3, H, W] tensor for visualization, where the 3 channels are predicted normals mapped to [0, 1]
-            - error_map: [B, 1, H, W] tensor for visualization, where the single channel is the per-pixel normal error (L2 distance to GT normal)
+            - error_map: [B, 1, H, W] tensor for visualization, where the single channel is the per-pixel angular error to the GT normal (in degrees)
         """
 
         # dataloader 输出的多视角图像维度是 [B, H, N, C, W]，这里统一转成 [B, N, C, H, W]
@@ -314,17 +314,24 @@ class Net():
         W = decoder_imgsize[1]
 
 
+        mae = torch.tensor(0.0, device=self.device)
+
         if self.mode in 'Train':
             nout = torch.zeros(B, H * W, 3).to(self.device)
             numMaxSamples = self.num_samples
+            mae_sum = torch.tensor(0.0, device=self.device)
+            mae_count = 0
             for b in range(B):
                 m_ = m[b, :, :, :].reshape(-1, H * W).permute(1,0)
                 n_ = n[b, :, :, :].reshape(-1, H * W).permute(1,0)
 
-                ids = np.nonzero(m_>0)[:,0]
-                if len(ids) > numMaxSamples:
+                ids = torch.nonzero(m_.squeeze(1) > 0, as_tuple=False).squeeze(1)
+                if ids.numel() == 0:
+                    continue
+                if ids.numel() > numMaxSamples:
                     # 高分辨率阶段只随机采样部分有效像素，避免显存/算力开销过大
-                    ids = ids[np.random.permutation(len(ids))][:numMaxSamples]
+                    perm = torch.randperm(ids.numel(), device=ids.device)[:numMaxSamples]
+                    ids = ids[perm]
 
                 coords = ind2coords((H, W), ids)
 
@@ -346,7 +353,9 @@ class Net():
                 nout_ = F.normalize(out_nml[:, :3],dim=1, p=2)
                 nout[b, ids, :] = nout_
 
-                loss += self.criterionL2(nout_, n_) / len(ids)
+                loss += self.criterionL2(nout_, n_) / ids.numel()
+                mae_sum += angular_error(nout_, n_) * ids.numel()
+                mae_count += ids.numel()
 
 
             self.optimizer_encoder.zero_grad()
@@ -358,6 +367,7 @@ class Net():
             self.optimizer_prediction.step()
             nout_high = nout.permute(0, 2, 1).reshape(B, 3, H, W)
             mask_high = m
+            mae = mae_sum / max(mae_count, 1)
 
         if self.mode in 'Test':
             nout = torch.zeros(B, H * W, 3).to(self.device)
@@ -366,28 +376,25 @@ class Net():
             for b in range(B):
                 m_ = m[b, :, :, :].reshape(-1, H * W).permute(1,0)
                 n_ = n[b, :, :, :].reshape(-1, H * W).permute(1,0)
-                ids = np.nonzero(m_>0)[:,0].cpu()
-                if len(ids) > 10000:
-                    # 测试时不随机丢点，而是分块处理所有有效像素，避免一次性推理过大
-                    num_split = len(ids) // 10000
-                    ids = np.array_split(ids, num_split)
-                else:
-                    ids = [ids]
+                ids = torch.nonzero(m_.squeeze(1) > 0, as_tuple=False).squeeze(1)
+                id_chunks = torch.split(ids, numMaxSamples) if ids.numel() > 0 else (ids,)
                 feat = feats[b, :, :, :, :]
-                for p in range(len(ids)):
+                for ids_chunk in id_chunks:
+                    if ids_chunk.numel() == 0:
+                        continue
                     x = []
-                    coords = ind2coords((H, W), ids[p])
+                    coords = ind2coords((H, W), ids_chunk)
                     for k in range(N):
                         f = F.grid_sample(feat[[k], :, :, :], coords.to(self.device), mode='bilinear', align_corners=False).squeeze().permute(1,0)
                         o = img_[b, k, :, :, :]
                         o = o.reshape(o.shape[0], o.shape[1] * o.shape[2]).permute(1,0)
-                        o = o[ids[p], :]
+                        o = o[ids_chunk, :]
                         x.append(torch.cat([o, f], dim=1))
                     x = torch.stack(x, 1)
                     feat_gg = self.aggregation(x)
                     out_nml = self.prediction(feat_gg)
                     nout_ = F.normalize(out_nml[:, :3],dim=1, p=2)
-                    nout[b, ids[p], :] = nout_
+                    nout[b, ids_chunk, :] = nout_
             nout_high = nout.permute(0, 2, 1).reshape(B, 3, H, W)
             mask_high = m
 
@@ -396,6 +403,8 @@ class Net():
 
         dot = torch.sum(nout_high * n, dim=1, keepdim=True).clamp(-1.0 + 1.0e-12, 1.0 - 1.0e-12)
         error_map = (torch.acos(dot) * 180.0 / torch.pi) * mask_high
+        
+        if self.mode in 'Test':
+            mae = angular_error(nout_high, n, mask_high)
 
-        mae = angular_error(nout_high, n, mask_high)
-        return loss.detach().cpu().item(),mae , normal_map.detach().cpu().numpy(), error_map.detach().cpu().numpy()
+        return loss.detach().cpu().item(), mae.detach().cpu().item(), normal_map.detach().cpu().numpy(), error_map.detach().cpu().numpy()

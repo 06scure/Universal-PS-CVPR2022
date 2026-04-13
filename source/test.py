@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 import torch
 import logging
 import argparse
@@ -27,7 +28,7 @@ parser.add_argument('--batchsize', type=int, default = 1,
     help='训练批大小，即每批的物体数量')
 parser.add_argument('--outdir', default='output/test_session_0413',
     help='输出根目录，用于保存检查点、日志和测试结果')
-parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260413_004039',
+parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260413_175559',
     help='预训练检查点目录路径，用于恢复训练或推理')
 parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
@@ -46,6 +47,19 @@ parser.add_argument('--encoder_imgsize', type=int, default=256,
 parser.add_argument('--decoder_imgsize', type=int, default=512,
     help='送入解码器的图像分辨率 (高=宽); 输入图像在编码前会被缩放到此尺寸')
 
+
+def make_error_heatmap(error_map):
+    error = error_map[0, 0]
+    valid_mask = error > 0
+
+    error_uint8 = np.zeros_like(error, dtype=np.uint8)
+    error_uint8[valid_mask] = np.clip(error[valid_mask] / 90.0 * 255.0, 0, 255).astype(np.uint8)
+
+    heatmap = cv2.applyColorMap(error_uint8, cv2.COLORMAP_JET)
+    heatmap[~valid_mask] = 0
+    return heatmap
+
+
 def main():
     args = parser.parse_args()
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
@@ -59,10 +73,10 @@ def main():
         raise RuntimeError("Failed to load test data.")
     test_data.loader_imgsize = (args.decoder_imgsize, args.decoder_imgsize)
     test_data_loader = DataLoader(
-        dataset = test_data, 
-        batch_size = args.batchsize, 
-        shuffle=False, 
-        num_workers=0, 
+        dataset = test_data,
+        batch_size = args.batchsize,
+        shuffle=False,
+        num_workers=0,
         pin_memory=True)
 
     # 初始化模型
@@ -82,7 +96,7 @@ def main():
 
             # 保存输出
             cv2.imwrite(f'{test_data.data.data_workspace}/normal.png', 255 * normal_map[0,:,:,:].transpose(1,2,0)[:,:,::-1])
-            cv2.imwrite(f'{test_data.data.data_workspace}/error.png', 255 * error_map[0,:,:,:].transpose(1,2,0)[:,:,::-1])
+            cv2.imwrite(f'{test_data.data.data_workspace}/error.png', make_error_heatmap(error_map))
 
             logger.info(f'Test MAE: {mae:.4f} degrees')
             mae_total += mae

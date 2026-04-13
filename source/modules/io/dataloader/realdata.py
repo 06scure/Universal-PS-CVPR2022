@@ -16,7 +16,6 @@ class dataloader():
 
     def img_tile(self, imgs, rows, cols, outdir): # [N, h, w, c]
         n, h, w, c = np.shape(imgs)
-        print(f'Imge num = {n}')
         if rows * cols <= n:
             img_tiled = []
             for i in range(cols):

@@ -41,7 +41,7 @@ parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
 parser.add_argument('--min_nimg', type=int, default=4,
     help='训练时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
-parser.add_argument('--num_samples', type=int, default=4096,
+parser.add_argument('--num_samples', type=int, default=6144,
     help='训练时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
 parser.add_argument('--lr', type=float, default=0.0001,
     help='AdamW 优化器初始学习率，统一应用于编码器、聚合模块和预测头')
@@ -113,7 +113,7 @@ def main():
                     swanlab.log({
                         'loss': loss,
                         'avg_loss': losses/global_step,
-                        'mae': mae
+                        'mae': float(mae)
                     })
 
         #每个epoch后保存模型
