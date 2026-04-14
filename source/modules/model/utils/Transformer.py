@@ -1,3 +1,9 @@
+"""
+Scalable, Detailed and Mask-free Universal Photometric Stereo Network (CVPR2023)
+# Copyright (c) 2023 Satoshi Ikehata
+# All rights reserved.
+"""
+
 import torch
 import torch.nn as nn
 from torch.nn import functional as F
@@ -42,14 +48,14 @@ class MultiHeadSelfAttentionBlock(nn.Module):
         return O
 
 class SAB(nn.Module):
-    def __init__(self, dim_in, dim_out, num_heads=4, ln=False, attention_dropout = 0.1, dim_feedforward = 512):
+    def __init__(self, dim_in, dim_out, num_heads=4, ln=False, attention_dropout = 0.1, dim_feedforward = 512, attn_mode = 'Normal'):
         super(SAB, self).__init__()
         self.mab = MultiHeadSelfAttentionBlock(dim_in, dim_out, num_heads, ln=ln, attention_dropout = attention_dropout, dim_feedforward=dim_feedforward)
     def forward(self, X):
         return self.mab(X, X)
 
 class PMA(nn.Module):
-    def __init__(self, dim, num_heads, num_seeds, ln=False):
+    def __init__(self, dim, num_heads, num_seeds, ln=False, attn_mode='Normal'):
         super(PMA, self).__init__()
         self.S = nn.Parameter(torch.Tensor(1, num_seeds, dim))
         nn.init.xavier_uniform_(self.S)
@@ -98,3 +104,49 @@ class TransformerLayer(nn.Module):
         x = self.dec(x)
         feat = x.view(-1, self.num_outputs * self.dim_hidden)
         return feat
+    
+class CommunicationBlock(nn.Module):
+    def __init__(self, dim_input, num_enc_sab = 3, dim_hidden=384, dim_feedforward = 1024, num_heads=8, ln=False, attention_dropout=0.1, use_efficient_attention=False):
+        super(CommunicationBlock, self).__init__()
+
+        if use_efficient_attention:
+            attn_mode = 'Efficient'
+        else:
+            attn_mode = 'Normal'
+        self.dim_hidden = dim_hidden
+        modules_enc = []
+        modules_enc.append(SAB(dim_input, dim_hidden, num_heads, ln=ln, attention_dropout = attention_dropout, dim_feedforward=dim_feedforward, attn_mode=attn_mode))
+        for k in range(num_enc_sab):
+            modules_enc.append(SAB(dim_hidden, dim_hidden, num_heads, ln=ln, attention_dropout = attention_dropout, dim_feedforward=dim_feedforward, attn_mode=attn_mode))
+        self.enc = nn.Sequential(*modules_enc)
+
+    def forward(self, x):
+        x = self.enc(x)
+        return x
+
+class AggregationBlock(nn.Module):
+    def __init__(self, dim_input, num_enc_sab = 3, num_outputs = 1, dim_hidden=384, dim_feedforward = 1024, num_heads=8, ln=False, attention_dropout=0.1, use_efficient_attention=False):
+        super(AggregationBlock, self).__init__()
+
+        self.num_outputs = num_outputs
+        self.dim_hidden = dim_hidden
+
+        if use_efficient_attention:
+            attn_mode = 'Efficient'
+        else:
+            attn_mode = 'Normal'
+
+        modules_enc = []
+        modules_enc.append(SAB(dim_input, dim_hidden, num_heads, ln=ln, attention_dropout = attention_dropout, dim_feedforward=dim_feedforward, attn_mode=attn_mode))
+        for k in range(num_enc_sab):
+            modules_enc.append(SAB(dim_hidden, dim_hidden, num_heads, ln=ln, attention_dropout = attention_dropout, dim_feedforward=dim_feedforward, attn_mode=attn_mode))
+        self.enc = nn.Sequential(*modules_enc)
+        modules_dec = []
+        modules_dec.append(PMA(dim_hidden, num_heads, num_outputs, attn_mode=attn_mode)) # after the PMA we should not put drop out
+        self.dec = nn.Sequential(*modules_dec)
+        
+    def forward(self, x):
+        x = self.enc(x)
+        x = self.dec(x)
+        x = x.view(-1, self.num_outputs * self.dim_hidden)
+        return x

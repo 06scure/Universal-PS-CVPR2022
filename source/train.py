@@ -1,12 +1,16 @@
-import torch
+import os
 import logging
 import argparse
-from tqdm import tqdm
 from datetime import datetime
+
+import torch
+from torch.utils.data import DataLoader
+from tqdm import tqdm
+
 from modules.io import dataio
 from modules.model import model
 from modules.config import config
-from torch.utils.data import DataLoader
+from modules.model import model_utils
 
 try:
     import swanlab
@@ -14,114 +18,130 @@ try:
 except ImportError:
     swanlab_available = False
 
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
-
 logger = logging.getLogger(__name__)
 
-parser = argparse.ArgumentParser(description='UniPS')
-parser.add_argument('--session_name', default = 'train_session',
+
+parser = argparse.ArgumentParser(description='UniPS Train')
+parser.add_argument('--session_name', default='train_session',
     help='训练会话名称')
-parser.add_argument('--training_dir', default = '/home/user/dataset/PSWild',
+parser.add_argument('--training_dir', default='/home/user/dataset/PSWild',
     help='训练数据集路径')
-parser.add_argument('--agg_type', default='Transformer', choices=['Transformer', 'Pooling'],
-    help='聚合解码器类型，将逐图像特征融合为全局光照上下文')
-parser.add_argument('--epoch', type=int, default = 1,
+parser.add_argument('--epoch', type=int, default=10,
     help='训练轮数')
-parser.add_argument('--batchsize', type=int, default = 1,
-    help='训练批大小，即每批的物体数量')
+parser.add_argument('--batchsize', type=int, default=1,
+    help='批大小')
 parser.add_argument('--outdir', default='output/train_session',
     help='输出根目录，用于保存检查点、日志和测试结果')
-parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260413_143851',
-    help='预训练检查点目录路径，用于恢复训练或推理')
+parser.add_argument('--pretrained', default=None,
+    help='checkpoint 文件路径；从头训练时留空')
 parser.add_argument('--num_agg_enc', type=int, default=3,
-    help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
-parser.add_argument('--min_nimg', type=int, default=4,
-    help='训练时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
+    help='聚合 Transformer 中编码器 SAB 的层数')
+parser.add_argument('--min_nimg', type=int, default=2,
+    help='训练时每个物体最少采样的输入图像数')
 parser.add_argument('--num_samples', type=int, default=6144,
-    help='训练时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
+    help='训练时每个物体最大像素采样数')
 parser.add_argument('--lr', type=float, default=0.0001,
-    help='AdamW 优化器初始学习率，统一应用于编码器、聚合模块和预测头')
-parser.add_argument('--lr_scheduler', default='step',
-    help='学习率调度器类型: "step" (每3轮衰减0.8) 或 "cos" (余弦退火，30轮) (默认: step)')
-parser.add_argument('--lr_init_scale', type=float, default=1.0,
-    help='初始学习率的缩放因子，启动时将 lr 乘以该系数; 在微调预训练模型时有用 (默认: 1.0)')
+    help='AdamW 优化器初始学习率')
+parser.add_argument('--lr_scheduler', default='step', choices=['step', 'cos'],
+    help='学习率调度器类型: step 或 cos')
 parser.add_argument('--encoder_imgsize', type=int, default=256,
-    help='送入 Swin Transformer 编码器的图像分辨率 (高=宽); 输入图像在编码前会被缩放到此尺寸')
+    help='送入编码器的图像分辨率')
 parser.add_argument('--decoder_imgsize', type=int, default=512,
-    help='送入解码器的图像分辨率 (高=宽); 输入图像在编码前会被缩放到此尺寸')
+    help='输出阶段使用的图像分辨率')
+
 
 def main():
     args = parser.parse_args()
-    device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+    device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
+    os.makedirs(args.outdir, exist_ok=True)
+    conf = config.TrainConfig()
 
-    # swanlab_available = False   # 测试模式
+    train_data = dataio.dataio('Train', args, conf, args.outdir)
+    train_data.loader_imgsize = (args.decoder_imgsize, args.decoder_imgsize)
+    train_loader = DataLoader(
+        dataset=train_data,
+        batch_size=args.batchsize,
+        shuffle=True,
+        num_workers=4,
+        pin_memory=True,
+    )
+
+    net = model.UniPS(
+        device=device,
+        min_nimg=args.min_nimg,
+        encoder_size=args.encoder_imgsize,
+        decoder_size=args.decoder_imgsize,
+        num_samples=args.num_samples,
+        num_agg_enc=args.num_agg_enc,
+    ).to(device)
+    optimizer, scheduler = model_utils.build_optimizer_and_scheduler(net, args)
+    start_epoch = model_utils.load_checkpoint(
+        net=net, 
+        optimizer=optimizer, 
+        scheduler=scheduler, 
+        checkpoint_path=args.pretrained, 
+        device=device)
 
     if swanlab_available:
         swanlab.init(
-            project="Universal-PS",
-            name=f"UniPS_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
-            config = args.__dict__, 
-            logdir = str(args.outdir + '/logs'),
+            project='Universal-PS',
+            name=f"{args.session_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}",
+            config=args.__dict__,
+            logdir=os.path.join(args.outdir, 'logs'),
         )
 
-    # 初始化超参数
-    conf = config.TrainConfig()
+    for epoch in range(start_epoch, args.epoch):
+        epoch_loss = 0.0
+        epoch_mae = 0.0
+        step_count = 0
 
-    # 初始化数据集读取
-    train_data = dataio.dataio('Train', args, conf, args.outdir)
-    if train_data is None:
-        raise RuntimeError("Failed to load train data.")
-    train_data.loader_imgsize = (args.decoder_imgsize, args.decoder_imgsize)
-    train_data_loader = DataLoader(
-        dataset = train_data, 
-        batch_size = args.batchsize, 
-        shuffle=True, 
-        num_workers=4, 
-        pin_memory=True)
-    
-    # 初始化模型
-    net = model.Net(args, device)
-    if args.pretrained is not None:
-        net.load_models(args.pretrained)
-    net.set_mode('Train')
+        pbar = tqdm(train_loader, desc=f'Train Epoch {epoch + 1}/{args.epoch}', leave=False)
+        for batch in pbar:
+            optimizer.zero_grad(set_to_none=True)
+            loss, mae, _, _ = net(batch=batch, mode='train')
+            loss.backward()
+            optimizer.step()
 
-    #开始训练
-    global_step = 0
-    losses = 0
-    for epoch in range(args.epoch):
-        with torch.autocast(device_type=device.type, enabled = False):
-            pbar = tqdm(train_data_loader,desc=f'Train Epoch {epoch+1}/{args.epoch}', leave=False)
-            for batch in pbar:
-                loss, mae, _, _ = net.step(
-                    batch,
-                decoder_imgsize=(args.decoder_imgsize, args.decoder_imgsize),
-                encoder_imgsize=(args.encoder_imgsize, args.encoder_imgsize))
+            loss_value = float(loss.detach().cpu().item())
+            mae_value = float(mae.detach().cpu().item())
+            epoch_loss += loss_value
+            epoch_mae += mae_value
+            step_count += 1
 
-                losses += loss
-                global_step += 1
+            avg_loss = epoch_loss / step_count
+            avg_mae = epoch_mae / step_count
+            pbar.set_postfix({
+                'loss': f'{loss_value:.4f}',
+                'avg_loss': f'{avg_loss:.4f}',
+                'mae': f'{mae_value:.4f}',
+                'avg_mae': f'{avg_mae:.4f}',
+            })
 
-                pbar.set_postfix(
-                    {'loss': f'{loss:.4f}', 
-                     'avg_loss': f'{losses/global_step:.4f}',
-                    })
-                
-                if swanlab_available:
-                    swanlab.log({
-                        'loss': loss,
-                        'avg_loss': losses/global_step,
-                        'mae': float(mae)
-                    })
+            if swanlab_available:
+                swanlab.log({
+                    'train/loss': loss_value,
+                    'train/avg_loss': avg_loss,
+                    'train/mae': mae_value,
+                    'train/avg_mae': avg_mae,
+                    'train/lr': optimizer.param_groups[0]['lr'],
+                })
 
-        #每个epoch后保存模型
-        time = datetime.now().strftime('%Y%m%d_%H%M%S')
-        savedir = args.outdir + '/checkpoint/' + time
-        net.save_models(savedir)
-        net.scheduler_step()
-        logger.info(f'Epoch {epoch+1}/{args.epoch} completed. Average Loss: {losses/global_step:.4f}. Models saved to {savedir}.')
+        scheduler.step()
+        checkpoint_path = model_utils.save_checkpoint(net, optimizer, scheduler, epoch + 1, args)
+        logger.info(
+            f'Epoch {epoch + 1}/{args.epoch} completed. '
+            f'Average Loss: {epoch_loss / max(step_count, 1):.4f}. '
+            f'Average MAE: {epoch_mae / max(step_count, 1):.4f}. '
+            f'Checkpoint saved to {checkpoint_path}. '
+            f'Current LR: {optimizer.param_groups[0]["lr"]:.6f}'
+        )
+
 
 if __name__ == '__main__':
     main()
