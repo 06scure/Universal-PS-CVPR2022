@@ -26,7 +26,7 @@ parser.add_argument('--agg_type', default='Transformer', choices=['Transformer',
     help='聚合解码器类型，将逐图像特征融合为全局光照上下文')
 parser.add_argument('--batchsize', type=int, default = 1,
     help='训练批大小，即每批的物体数量')
-parser.add_argument('--outdir', default='output/test_session_0413',
+parser.add_argument('--outdir', default='output/test_session_0414',
     help='输出根目录，用于保存检查点、日志和测试结果')
 parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260413_175559',
     help='预训练检查点目录路径，用于恢复训练或推理')
@@ -86,7 +86,7 @@ def main():
     net.set_mode('Test')
 
     # 进行测试
-    mae_total = 0.0
+    result = {}
     with torch.no_grad():
         for batch in tqdm(test_data_loader, desc=f'Testing Epoch', leave=False):
             loss, mae, normal_map, error_map = net.step(
@@ -98,9 +98,12 @@ def main():
             cv2.imwrite(f'{test_data.data.data_workspace}/normal.png', 255 * normal_map[0,:,:,:].transpose(1,2,0)[:,:,::-1])
             cv2.imwrite(f'{test_data.data.data_workspace}/error.png', make_error_heatmap(error_map))
 
-            logger.info(f'Test MAE: {mae:.4f} degrees')
-            mae_total += mae
-    logger.info(f"Testing completed. avg MAE: {mae_total / len(test_data_loader):.4f} degrees")
+            result[test_data.data.data_workspace] = mae
+
+    # 输出测试结果
+    for obj_name, mae in result.items():
+        logger.info(f"{obj_name}: MAE = {mae:.4f} degrees")
+    logger.info(f"Testing completed. avg MAE: {sum(result.values()) / len(result):.4f} degrees")
 
 if __name__ == "__main__":
     main()

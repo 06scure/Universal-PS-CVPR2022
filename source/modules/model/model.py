@@ -101,29 +101,31 @@ class Encoder(nn.Module):
         Return:
             feature [B, N, Cout, H/4, W/4]
         """
-        feats = []
+        feats = []  # 每帧之间的swin transformer特征,为 [96, 192, 384, 768]四个尺度的特征图
         for k in range(x.shape[1]):
             feats.append(self.backbone(x[:, k, :, :, :]))
 
         out = [] # layer first
-        for l in range(len(feats[0])):
+        # 帧间 communication
+        for l in range(len(feats[0])):  # 同一尺度的特征图进行跨帧融合
             in_fuse = []
-            for k in range(x.shape[1]):
+            for k in range(x.shape[1]): # 每个视角的第l层特征图
                 in_fuse.append(feats[k][l])
-            in_fuse = torch.stack(in_fuse, dim=1) # B, N, C, H//4, W//4
+            in_fuse = torch.stack(in_fuse, dim=1)
             B, N, C, H, W = in_fuse.size()
-            in_fuse = in_fuse.permute(0,3,4,1,2).reshape(-1, N, C)
-            out_fuse = self.attn[l](in_fuse).reshape(B, H, W, N, C).permute(0,3,4,1,2) # B, N, C, H, W
+            in_fuse = in_fuse.permute(0,3,4,1,2).reshape(-1, N, C) # [B*H*W, N, C]
+            # 将拼接好的特征图送入 SAB 进行跨视图融合
+            out_fuse = self.attn[l](in_fuse).reshape(B, H, W, N, C).permute(0,3,4,1,2) # [B, N, C, H, W]
             out.append(out_fuse)
 
-        feats = []
+        feats = []  # SAB 融合后的特征图
         for k in range(x.shape[1]):
             feats.append((out[0][:,k,:,:,:], out[1][:,k,:,:,:], out[2][:,k,:,:,:], out[3][:,k,:,:,:]))
 
-        outs = []
+        outs = []   # 送入 UPerHead 进行多尺度融合，输出统一维度的特征图
         for k in range(x.shape[1]):
             outs.append(self.fusion(feats[k]))
-        feats = torch.stack(outs, 1) # [B, N, C, H/4, W/4]
+        feats = torch.stack(outs, 1) # [B, N, C, H/4, W/4], h,w =256
         return feats
 
 class Net():
@@ -296,6 +298,7 @@ class Net():
             out_nml = self.prediction(feat_gg)
             nout_ = F.normalize(out_nml[:, :3],dim=1, p=2)
             nout[b, ids, :] = nout_
+            # 低分辨率下做了一次损失
             loss += self.criterionL2(nout_, n_) / len(ids)
 
         # nout_low = nout.permute(0, 2, 1).reshape(B, 3, H, W)
@@ -352,9 +355,9 @@ class Net():
                 out_nml = self.prediction(feat_gg)
                 nout_ = F.normalize(out_nml[:, :3],dim=1, p=2)
                 nout[b, ids, :] = nout_
-
+                # 逐像素又做了一次损失
                 loss += self.criterionL2(nout_, n_) / ids.numel()
-                mae_sum += angular_error(nout_, n_) * ids.numel()
+                mae_sum += angular_error(nout_, n_).sum()
                 mae_count += ids.numel()
 
 
