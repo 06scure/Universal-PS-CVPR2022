@@ -36,7 +36,7 @@ parser.add_argument('--epoch', type=int, default=10,
     help='训练轮数')
 parser.add_argument('--batchsize', type=int, default=1,
     help='批大小')
-parser.add_argument('--outdir', default='output/train_session',
+parser.add_argument('--outdir', default='output/train_session_0414',
     help='输出根目录，用于保存检查点、日志和测试结果')
 parser.add_argument('--pretrained', default=None,
     help='checkpoint 文件路径；从头训练时留空')

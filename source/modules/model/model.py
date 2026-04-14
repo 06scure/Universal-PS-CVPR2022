@@ -129,7 +129,7 @@ class UniPS(nn.Module):
         self.max_num_samples = max_samples
 
         self.encoder = Encoder(input_nc=4)
-        self.aggregation = Transformer.TransformerLayer(
+        self.aggregation = Transformer.AggregationBlock(
             dim_input=256 + 3,
             num_enc_sab=num_agg_enc,
             num_outputs=1,
@@ -145,7 +145,6 @@ class UniPS(nn.Module):
 
     def init_weights(self) -> None:
         self.encoder.init_weights()
-        self.aggregation.init_weights()
         self.prediction.init_weights()
 
     def _resolve_size(
