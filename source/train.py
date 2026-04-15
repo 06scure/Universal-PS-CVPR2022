@@ -105,17 +105,17 @@ def main():
                 loss, mae, _, _ = net(batch)
                 loss.backward()
                 optimizer.step()
-                losses += loss
+                losses += loss.item()
                 global_step += 1
 
                 pbar.set_postfix(
-                    {'loss': f'{loss:.4f}', 
+                    {'loss': f'{loss.item():.4f}', 
                      'avg_loss': f'{losses/global_step:.4f}',
                     })
                 
                 if swanlab_available:
                     swanlab.log({
-                        'loss': loss,
+                        'loss': loss.item(),
                         'avg_loss': losses/global_step,
                         'mae': float(mae)
                     })
