@@ -29,7 +29,7 @@ parser.add_argument('--batchsize', type=int, default = 1,
     help='训练批大小，即每批的物体数量')
 parser.add_argument('--outdir', default='output/test_session_0416',
     help='输出根目录，用于保存检查点、日志和测试结果')
-parser.add_argument('--pretrained', default='/home/user/code/vggt_unips/output/train_session/checkpoint/20260415_214320_model.pt',
+parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260416_064546/checkpoint/20260416_064546_model.pt',
     help='预训练检查点目录路径，用于恢复训练或推理')
 parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
@@ -47,7 +47,7 @@ parser.add_argument('--encoder_imgsize', type=int, default=256,
     help='送入 Swin Transformer 编码器的图像分辨率 (高=宽); 输入图像在编码前会被缩放到此尺寸')
 parser.add_argument('--decoder_imgsize', type=int, default=512,
     help='送入解码器的图像分辨率 (高=宽); 输入图像在编码前会被缩放到此尺寸')
-parser.add_argument('--grad_loss_weight', type=float, default=0.05,
+parser.add_argument('--grad_loss_weight', type=float, default=0,
     help='低分辨率梯度差辅助损失的权重 μ；仅为保持与训练参数一致')
 
 
@@ -73,6 +73,9 @@ def main():
     net = model.UniPS(args, device).to(device)
     if args.pretrained is not None:
         net.load(args.pretrained)
+    else:
+        raise RuntimeError("Pretrained model path must be provided for testing.")
+    
     net.set_mode('Test')
 
     # 进行测试

@@ -27,7 +27,7 @@ parser.add_argument('--session_name', default = 'train_session',
     help='训练会话名称')
 parser.add_argument('--training_dir', default = '/home/user/dataset/PSWild',
     help='训练数据集路径')
-parser.add_argument('--epoch', type=int, default = 10,
+parser.add_argument('--epoch', type=int, default = 2,
     help='训练轮数')
 parser.add_argument('--batchsize', type=int, default = 1,
     help='训练批大小，即每批的物体数量')
@@ -41,13 +41,13 @@ parser.add_argument('--min_nimg', type=int, default=2,
     help='训练时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
 parser.add_argument('--num_samples', type=int, default=6144,
     help='训练时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
-parser.add_argument('--lr', type=float, default=0.00001,
+parser.add_argument('--lr', type=float, default=0.000001,
     help='AdamW 优化器初始学习率，统一应用于编码器、聚合模块和预测头')
 parser.add_argument('--lr_scheduler', default='step',
     help='学习率调度器类型: "step" (每3轮衰减0.8) 或 "cos" (余弦退火，30轮) (默认: step)')
 parser.add_argument('--lr_init_scale', type=float, default=1.0,
     help='初始学习率的缩放因子，启动时将 lr 乘以该系数; 在微调预训练模型时有用 (默认: 1.0)')
-parser.add_argument('--grad_loss_weight', type=float, default=0.05,
+parser.add_argument('--grad_loss_weight', type=float, default=0,
     help='低分辨率梯度差辅助损失的权重 μ；总损失在 canonical 阶段额外加入 μL_g')
 
 def main():

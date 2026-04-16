@@ -349,11 +349,10 @@ class UniPS(nn.Module):
              optimizer:Optional[torch.optim.Optimizer] = None,
              scheduler:Optional[torch.optim.lr_scheduler.LRScheduler] = None,
              epoch:int = 0):
-        checkpoint_dir = os.path.join(outdir, 'checkpoint')
-        os.makedirs(checkpoint_dir, exist_ok = True)
+        os.makedirs(outdir, exist_ok = True)
         from datetime import datetime
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        checkpoint_path = os.path.join(checkpoint_dir, f'{timestamp}_model.pt')
+        checkpoint_path = os.path.join(outdir, f'{timestamp}.pt')
         torch.save({
             'state_dict': self.state_dict(),
             'optimizer': optimizer.state_dict() if optimizer is not None else None,
