@@ -1,13 +1,13 @@
 from .model_utils import *
-from ..utils.ind2sub import *
+from ..utils.ind2sub import ind2coords
 import os
-import glob
 import torch
 import logging
 import torch.nn as nn
+import numpy as np
 from torch.nn import functional as F
 from torch.nn.init import kaiming_normal_, trunc_normal_
-from typing import Optional
+from typing import Optional, Tuple
 
 from .utils.folked import Transformer
 from .utils.folked import swin_transformer
@@ -42,6 +42,7 @@ class PredictionHead(nn.Module):
                     m.weight.data.fill_(1.0)
 
     def forward(self, x):
+        # [B, C] -> [B, 3]
         return self.regression(x)
 
 class Encoder(nn.Module):
@@ -62,7 +63,7 @@ class Encoder(nn.Module):
         self.backbone = nn.Sequential(*back)
         self.fusion = nn.Sequential(*fuse)
 
-    def init_weights(self, zero = False):
+    def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 trunc_normal_(m.weight, std=.02)
@@ -134,16 +135,21 @@ class UniPS(nn.Module):
         self.device = device
         self.min_nimg = getattr(args, 'min_nimg', 2)   # 输入图像
         self.num_samples = getattr(args, 'num_samples', 4096) # 采样像素
-        self.grad_loss_weight = getattr(args, 'grad_loss_weight', 0.05)
         self.model_name = args.session_name
-        self.num_agg_enc = getattr(args, 'num_agg_enc', 3)
 
         self.encoder_size = getattr(args, 'encoder_imgsize', 256)
         self.decoder_size = getattr(args, 'decoder_imgsize', 512)
 
         self.encoder = Encoder(4)
 
-        self.aggregation = Transformer.AggregationBlock(dim_input = 256 + 3, num_enc_sab = self.num_agg_enc, num_outputs = 1, dim_hidden=384, dim_feedforward = 1024, num_heads=8, ln=True, attention_dropout=0.1)
+        self.aggregation = Transformer.AggregationBlock(
+            dim_input = 256 + 3, 
+            num_outputs = 1, 
+            dim_hidden=384, 
+            dim_feedforward = 1024, 
+            num_heads=8, 
+            ln=True, 
+            attention_dropout=0.1)
 
         self.prediction = PredictionHead(384, 3) # No urcainty
 
@@ -178,9 +184,9 @@ class UniPS(nn.Module):
         """
 
         # dataloader 输出的多视角图像维度是 [B, H, N, C, W]，这里统一转成 [B, N, C, H, W]
-        img = batch[0].permute(0, 4, 1, 2, 3).to(self.device)# B N C H W
-        nml = batch[1].to(self.device)
-        mask = batch[2].to(self.device) # B 1 H W
+        img = batch[0].permute(0, 4, 1, 2, 3).to(self.device)# [B, N, C, H, W]
+        nml = batch[1].to(self.device)  # [B, 3, H, W]
+        mask = batch[2].to(self.device) # [B, 1, H, W]
 
         min_nimg = self.min_nimg
         if self.mode in 'Train' and img.shape[1] >= min_nimg:
@@ -191,11 +197,7 @@ class UniPS(nn.Module):
 
 
         """ Feature Encoding Stage"""
-        B = img.shape[0]
-        N = img.shape[1]
-        C = img.shape[2]
-        H = img.shape[3]
-        W = img.shape[4]
+        B, N, C, H, W = img.shape
 
         img_ = img.reshape(-1, C, H, W)
         img_ = F.interpolate(img_, size=self.encoder_size, mode='bilinear', align_corners=False).reshape(B, N, C, self.encoder_size, self.encoder_size)
@@ -205,11 +207,7 @@ class UniPS(nn.Module):
         feats = self.encoder(data) # [B, N, 256, H/4, W/4]，每个视角一张特征图
 
         """Process at Canonical Resolution"""
-        B = feats.shape[0]
-        N = feats.shape[1]
-        C = feats.shape[2]
-        H = feats.shape[3]
-        W = feats.shape[4]
+        B, N, C, H, W = feats.shape
 
         img_ = img.reshape(-1, img.shape[2], img.shape[3], img.shape[4])
         img_ = F.interpolate(img_, size= (H, W), mode='bilinear', align_corners=False).reshape(img.shape[0], img.shape[1], img.shape[2], H, W)
@@ -240,12 +238,6 @@ class UniPS(nn.Module):
             nout[b, ids, :] = nout_
             # 低分辨率下做了一次损失
             loss += self.criterionL2(nout_, n_) / len(ids)
-
-        nout_low = nout.permute(0, 2, 1).reshape(B, 3, H, W)
-        mask_low = m
-        if self.grad_loss_weight > 0:
-            grad_loss = gradient_difference_loss(nout_low, n, mask_low)
-            loss += self.grad_loss_weight * grad_loss
 
         """Prediction at Original Resolution"""
         img_ = img.reshape(-1, img.shape[2], img.shape[3], img.shape[4])
@@ -371,13 +363,13 @@ class UniPS(nn.Module):
             raise ValueError("Checkpoint directory must be provided for loading.")
 
         checkpoint = torch.load(outdir, map_location=device)
-        self.load_state_dict(checkpoint['state_dict'])
+        self.load_state_dict(state_dict=checkpoint['state_dict'])
 
         if optimizer is not None and 'optimizer' in checkpoint:
-            optimizer.load_state_dict(checkpoint['optimizer'])
+            optimizer.load_state_dict(state_dict=checkpoint['optimizer'])
 
         if scheduler is not None and 'scheduler' in checkpoint:
-            scheduler.load_state_dict(checkpoint['scheduler'])
+            scheduler.load_state_dict(state_dict=checkpoint['scheduler'])
 
         epoch = int(checkpoint.get('epoch', 0))
         return epoch
