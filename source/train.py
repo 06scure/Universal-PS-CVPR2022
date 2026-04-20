@@ -27,19 +27,19 @@ parser.add_argument('--session_name', default = 'train_session',
     help='训练会话名称')
 parser.add_argument('--training_dir', default = '/home/user/dataset/PSWild',
     help='训练数据集路径')
-parser.add_argument('--epoch', type=int, default = 5,
+parser.add_argument('--epoch', type=int, default = 10,
     help='训练轮数')
-parser.add_argument('--batchsize', type=int, default = 1,
+parser.add_argument('--batchsize', type=int, default = 2,
     help='训练批大小，即每批的物体数量')
 parser.add_argument('--outdir', default='output/train_session',
     help='输出根目录，用于保存检查点、日志和测试结果')
-parser.add_argument('--pretrained', default='home/user/checkpoints/unips/20260416_161945.pt',
+parser.add_argument('--pretrained', default=None,
     help='预训练检查点目录路径，用于恢复训练或推理')
 parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
 parser.add_argument('--min_nimg', type=int, default=2,
     help='训练时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
-parser.add_argument('--num_samples', type=int, default=6144,
+parser.add_argument('--num_samples', type=int, default=4096,
     help='训练时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
 parser.add_argument('--lr', type=float, default=0.0001,
     help='AdamW 优化器初始学习率，统一应用于编码器、聚合模块和预测头')
@@ -97,7 +97,7 @@ def main():
     global_step = 0
     losses = 0.0
     for epoch in range(args.epoch):
-        with torch.autocast(device_type=device.type, enabled = False):
+        with torch.autocast(device_type=device.type, enabled = True, dtype=torch.bfloat16):
             pbar = tqdm(train_data_loader,desc=f'Train Epoch {epoch+1}/{args.epoch}', leave=False)
             for batch in pbar:
                 optimizer.zero_grad()
