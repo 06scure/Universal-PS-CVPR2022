@@ -25,16 +25,16 @@ parser.add_argument('--test_dir', default = '/home/user/dataset/DiLiGenT_512',
     help='测试数据集路径')
 parser.add_argument('--batchsize', type=int, default = 1,
     help='训练批大小，即每批的物体数量')
-parser.add_argument('--outdir', default='output/test_session_rgb_concat',
+parser.add_argument('--outdir', default='output/test_session_0420',
     help='输出根目录，用于保存检查点、日志和测试结果')
-parser.add_argument('--pretrained', default='/home/user/code/vggt_unips/output/train_session/checkpoint/20260420_093714_concat_rgb.pt',
+parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260420_211528.pt',
     help='预训练检查点目录路径，用于恢复训练或推理')
 parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
 parser.add_argument('--min_nimg', type=int, default=10,
-    help='训练时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
+    help='测试时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
 parser.add_argument('--num_samples', type=int, default=5000,
-    help='训练时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
+    help='测试时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
 
 def main():
     args = parser.parse_args()
@@ -44,7 +44,7 @@ def main():
     conf = config.TestConfig()  # 从 config 模块获取配置对象
 
     # 初始化数据集读取
-    test_data = dataio.dataio('Test', args, conf, args.outdir)
+    test_data = dataio.dataio(mode='Test', args=args, conf=conf, outdir=args.outdir)
     if test_data is None:
         raise RuntimeError("Failed to load test data.")
     test_data_loader = DataLoader(
@@ -55,13 +55,13 @@ def main():
         pin_memory=True)
 
     # 初始化模型
-    net = model.UniPS(args, device).to(device)
+    net = model.UniPS(args=args, device=device).to(device)
     if args.pretrained is not None:
         net.load(args.pretrained)
     else:
         raise RuntimeError("Pretrained model path must be provided for testing.")
     
-    net.set_mode('Test')
+    net.set_mode(mode='Test')
 
     # 进行测试
     result = {}

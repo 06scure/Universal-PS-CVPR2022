@@ -20,7 +20,7 @@ logging.basicConfig(
     datefmt='%Y-%m-%d %H:%M:%S'
 )
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger(name=__name__)
 
 parser = argparse.ArgumentParser(description='UniPS')
 parser.add_argument('--session_name', default = 'train_session',
@@ -39,9 +39,9 @@ parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
 parser.add_argument('--min_nimg', type=int, default=2,
     help='训练时每个物体最少采样的输入图像数; 网络会在 [min_nimg, 总图像数] 范围内随机选取')
-parser.add_argument('--num_samples', type=int, default=4096,
+parser.add_argument('--num_samples', type=int, default=2048,
     help='训练时每个物体最大像素采样数; 从前景掩码内随机抽取，用于限制显存占用')
-parser.add_argument('--lr', type=float, default=0.0001,
+parser.add_argument('--lr', type=float, default=0.00001,
     help='AdamW 优化器初始学习率，统一应用于编码器、聚合模块和预测头')
 parser.add_argument('--lr_scheduler', default='step',
     help='学习率调度器类型: "step" (每3轮衰减0.8) 或 "cos" (余弦退火，30轮) (默认: step)')
@@ -52,7 +52,7 @@ def main():
     args = parser.parse_args()
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
-    swanlab_available = False
+    # swanlab_available = False
 
     if swanlab_available:
         swanlab.init(
@@ -66,13 +66,13 @@ def main():
     conf = config.TrainConfig()
 
     # 初始化数据集读取
-    train_data = dataio.dataio('Train', args, conf, args.outdir)
+    train_data = dataio.dataio(mode='Train', args=args, conf=conf, outdir=args.outdir)
     if train_data is None:
         raise RuntimeError("Failed to load train data.")
 
     train_data_loader = DataLoader(
-        dataset = train_data, 
-        batch_size = args.batchsize, 
+        dataset=train_data, 
+        batch_size=args.batchsize, 
         shuffle=True, 
         num_workers=4, 
         pin_memory=True)
@@ -97,11 +97,11 @@ def main():
     global_step = 0
     losses = 0.0
     for epoch in range(args.epoch):
-        with torch.autocast(device_type=device.type, enabled = True, dtype=torch.bfloat16):
-            pbar = tqdm(train_data_loader,desc=f'Train Epoch {epoch+1}/{args.epoch}', leave=False)
-            for batch in pbar:
-                optimizer.zero_grad()
+        pbar = tqdm(train_data_loader,desc=f'Train Epoch {epoch+1}/{args.epoch}', leave=False)
+        for batch in pbar:
+            with torch.autocast(device_type=device.type, enabled=True, dtype=torch.bfloat16):
                 loss, _, _, _ = net(batch)
+                optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()
                 losses += loss.item()
@@ -109,7 +109,7 @@ def main():
 
                 pbar.set_postfix(
                     ordered_dict={'loss': f'{loss.item():.4f}', 
-                     'avg_loss': f'{losses/global_step:.4f}',
+                    'avg_loss': f'{losses/global_step:.4f}',
                     })
                 
                 if swanlab_available:

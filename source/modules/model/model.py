@@ -332,9 +332,9 @@ class UniPS(nn.Module):
         if self.mode in 'Test':
             normal_map = get_normal_map(nout_high, mask_high)
             error_map = get_error_map(nout_high, n, mask_high)
-            return loss, mae.detach().cpu().item(), normal_map.detach().cpu().numpy(), error_map.detach().cpu().numpy()
+            return loss / B, mae.detach().cpu().item() / B, normal_map.detach().cpu().numpy(), error_map.detach().cpu().numpy()
         else:
-            return loss, mae.detach().cpu().item(), None, None
+            return loss / B, mae.detach().cpu().item() / B, None, None
     
     def save(self, 
              outdir:str,
