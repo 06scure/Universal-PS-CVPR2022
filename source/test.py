@@ -61,19 +61,22 @@ def main():
     else:
         raise RuntimeError("Pretrained model path must be provided for testing.")
     
+    # 设置模型为测试模式
     net.set_mode(mode='Test')
+    net.eval()
 
     # 进行测试
     result = {}
-    with torch.no_grad():
-        for batch in tqdm(test_data_loader, desc=f'Testing Epoch', leave=False):
-            loss, mae, normal_map, error_map = net(batch)
+    for batch in tqdm(test_data_loader, desc=f'Testing Epoch', leave=False):
+        with torch.no_grad():
+            with torch.autocast(device_type=device.type, enabled=True, dtype=torch.bfloat16):
+                loss, mae, normal_map, error_map = net(batch)
 
-            # 保存输出
-            cv2.imwrite(f'{test_data.data.data_workspace}/normal.png', (255 * normal_map[0,:,:,:].transpose(1,2,0)[:,:,::-1]).astype(np.uint8))  # 转换为 HWC 和 BGR 格式  
-            cv2.imwrite(f'{test_data.data.data_workspace}/error.png', image_utils.make_error_heatmap(error_map))
+        # 保存输出
+        cv2.imwrite(f'{test_data.data.data_workspace}/normal.png', (255 * normal_map[0,:,:,:].transpose(1,2,0)[:,:,::-1]).astype(np.uint8))  # 转换为 HWC 和 BGR 格式  
+        cv2.imwrite(f'{test_data.data.data_workspace}/error.png', image_utils.make_error_heatmap(error_map))
 
-            result[test_data.data.data_workspace] = mae
+        result[test_data.data.data_workspace] = mae
 
     # 输出测试结果
     for obj_name, mae in result.items():
