@@ -1,22 +1,13 @@
 import cv2
-import numpy as np
 import torch
-import logging
 import argparse
+import numpy as np
 from tqdm import tqdm
 from modules.io import dataio
 from modules.model import model
 from modules.config import config
-from modules.utils import image_utils
+from modules.utils import image_utils, log
 from torch.utils.data import DataLoader
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-
-logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(description='UniPS')
 parser.add_argument('--session_name', default = 'test_session',
@@ -25,9 +16,9 @@ parser.add_argument('--test_dir', default = '/home/user/dataset/DiLiGenT_512',
     help='测试数据集路径')
 parser.add_argument('--batchsize', type=int, default = 1,
     help='训练批大小，即每批的物体数量')
-parser.add_argument('--outdir', default='output/test_session_0420',
+parser.add_argument('--outdir', default='output/test_session_0421',
     help='输出根目录，用于保存检查点、日志和测试结果')
-parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260420_211528.pt',
+parser.add_argument('--pretrained', default='/home/user/code/Universal-PS-CVPR2022/output/train_session/checkpoint/20260421_144733.pt',
     help='预训练检查点目录路径，用于恢复训练或推理')
 parser.add_argument('--num_agg_enc', type=int, default=3,
     help='聚合 Transformer 中编码器 SAB (集合注意力块) 的层数')
@@ -39,6 +30,8 @@ parser.add_argument('--num_samples', type=int, default=5000,
 def main():
     args = parser.parse_args()
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
+
+    logger = log.setup_logger(outdir=args.outdir)
 
     # 初始化超参数
     conf = config.TestConfig()  # 从 config 模块获取配置对象

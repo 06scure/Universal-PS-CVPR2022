@@ -4,22 +4,15 @@ import argparse
 from tqdm import tqdm
 from datetime import datetime
 from modules.io import dataio
-from modules.model import model, model_utils
+from modules.utils import log
 from modules.config import config
 from torch.utils.data import DataLoader
-
+from modules.model import model, model_utils
 try:
     import swanlab
     swanlab_available = True
 except ImportError:
     swanlab_available = False
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
-logger = logging.getLogger(__name__)
 
 parser = argparse.ArgumentParser(description='UniPS')
 parser.add_argument('--session_name', default = 'train_session',
@@ -51,8 +44,9 @@ def main():
     args = parser.parse_args()
     device = torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
 
+    logger = log.setup_logger(outdir=args.outdir)
+    
     # swanlab_available = False
-
     if swanlab_available:
         swanlab.init(
             project="Universal-PS",
@@ -129,12 +123,12 @@ def main():
                     })
 
         savedir = args.outdir + '/checkpoint/'
-        if epoch % args.save_freq == 0:
+        if (epoch + 1) % args.save_freq == 0:
             net.save(
                 outdir=savedir,
                 optimizer=optimizer,
                 scheduler=scheduler,
-                epoch=epoch
+                epoch=epoch+1,
             )
             logger.info(f'Model saved to {savedir}.')
         scheduler.step()    # 更新学习率
