@@ -1,11 +1,13 @@
+import os
 import glob
-import os,sys
+import logging
 from typing import Optional
 import torch.utils.data as data
 from .dataloader import adobenpi
 from .dataloader import realdata
 from .utils import *
 
+logger = logging.getLogger(__name__)
 
 class dataio(data.Dataset):
     def __init__(self, mode, args, conf, outdir):
@@ -28,8 +30,7 @@ class dataio(data.Dataset):
             self.prefix= conf.test_prefix
             self.outdir = outdir
         else:
-            print("mode must be from [Train, Test]", file=sys.stderr)
-            sys.exit(1)
+            raise ValueError("mode must be from [Train, Test]")
 
         self.data_name = []
         self.set_id = []
@@ -43,27 +44,26 @@ class dataio(data.Dataset):
 
         self.objlist = []
         for i in range(len(data_root)):
-            print('Initialize %s' % (data_root[i]))
+            logger.debug('Initialize %s' % (data_root[i]))
 
             # Check if data root exists
             if not os.path.exists(data_root[i]):
-                print(f"ERROR: Data root does not exist: {data_root[i]}", file=sys.stderr)
-                print(f"Please check your --{mode.lower()}_dir parameter!", file=sys.stderr)
-                sys.exit(1)
+                logger.error(f"Please check your --{mode.lower()}_dir parameter!")
+                raise FileNotFoundError(f"ERROR: Data root does not exist: {data_root[i]}")
 
             if not os.path.isdir(data_root[i]):
-                print(f"ERROR: Data root is not a directory: {data_root[i]}", file=sys.stderr)
-                sys.exit(1)
+                logger.error(f"Please check your --{mode.lower()}_dir parameter!")
+                raise NotADirectoryError(f"ERROR: Data root is not a directory: {data_root[i]}")
 
             # List contents of the directory for debugging
             contents = os.listdir(data_root[i])
-            print(f"Contents of {data_root[i]}: {len(contents)} items")
+            logger.debug(f"Contents of {data_root[i]}: {len(contents)} items")
             if len(contents) > 0:
-                print(f"First few items: {contents[:min(5, len(contents))]}")
+                logger.debug(f"First few items: {contents[:min(5, len(contents))]}")
 
             # Search recursively for directories with the specified extension
             search_pattern = data_root[i] + '/**/*%s' % extension
-            print(f"Searching recursively for directories with pattern: {search_pattern}")
+            logger.debug(f"Searching recursively for directories with pattern: {search_pattern}")
 
             objlist = []
             for p in glob.glob(search_pattern, recursive=True):
@@ -71,30 +71,22 @@ class dataio(data.Dataset):
                     objlist.append(p)
 
             objlist = sorted(objlist)
-
-            # 限制推理数量（仅在Test模式下生效）
-            if mode == 'Test' and hasattr(args, 'min_nimg') and args.min_nimg is not None:
-                if len(objlist) > args.min_nimg:
-                    print(f"Limiting test objects from {len(objlist)} to {args.min_nimg}")
-                    objlist = objlist[:args.min_nimg]
-
             self.objlist = self.objlist + objlist
 
-        print(f"Number of {mode} set is {len(self.objlist)}")
+        logger.info(f"mode is {mode}, items count is {len(self.objlist)}")
 
         # Check if we have any data
         if len(self.objlist) == 0:
-            print(f"ERROR: No data found for {mode} mode!", file=sys.stderr)
-            print(f"Please check your data directory structure and extension settings.", file=sys.stderr)
-            print(f"Expected directory extension: {extension}", file=sys.stderr)
-            print(f"Searched recursively in: {data_root}", file=sys.stderr)
-            sys.exit(1)
+            logger.error(f"Please check your data directory structure and extension settings.")
+            logger.error(f"Expected directory extension: {extension}")
+            logger.error(f"Searched recursively in: {data_root}")
+            raise FileNotFoundError(f"No data found for {mode} mode!")
 
 
         if self.datatype == 'AdobeNPI':
-            self.data = adobenpi.dataloader(self.numberOfImageBuffer)
+            self.data = adobenpi.dataloader(numberOfImages=self.numberOfImageBuffer)
         elif self.datatype == 'RealData':
-            self.data = realdata.dataloader(self.numberOfImageBuffer, self.outdir)
+            self.data = realdata.dataloader(numberOfImages=self.numberOfImageBuffer, outdir=self.outdir)
         else:
             raise Exception(' "datatype" != in "Cycles, Adobe, DiLiGenT"')
 

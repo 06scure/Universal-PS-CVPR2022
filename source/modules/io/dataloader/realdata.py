@@ -8,7 +8,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 
 class dataloader():
-    def __init__(self, numberOfImages = None, outdir = '.'):
+    def __init__(self, numberOfImages: int | None = None, outdir: str = '.'):
         self.numberOfImages = numberOfImages
         self.outdir = outdir
         self.data_workspace = outdir  # 初始化默认值
@@ -22,8 +22,8 @@ class dataloader():
                 temp = np.reshape(imgs[rows*i:rows*i+rows,:,:,:], (-1, w, 3))
                 img_tiled.append(temp)
             img_tiled = np.concatenate(img_tiled, axis = 1)
-            os.makedirs(outdir, exist_ok=True)
-            cv2.imwrite(f'{outdir}/tiled.png', (255 * img_tiled[:,:,::-1]).astype(np.uint8))
+            # os.makedirs(outdir, exist_ok=True)
+            # cv2.imwrite(f'{outdir}/tiled.png', (255 * img_tiled[:,:,::-1]).astype(np.uint8))
 
     def merge_img(self, imgs, merge_num): # [N, h*w, 3]
         imgs_merged = np.zeros(imgs.shape, np.float32)
@@ -42,7 +42,6 @@ class dataloader():
         img = img / (norm.reshape(-1,1) + 1e-10)
         imgs = np.split(img, img.shape[1], axis=1)
         imgs = [img.reshape(h, w, -1) for img in imgs]
-        print('PSFCN_NORMALIZED')
         return imgs
 
     def _normalize_image(self, img):
@@ -108,11 +107,10 @@ class dataloader():
         normal *= mask[:, :, None]
         return normal.astype(np.float32)
 
-    def load(self, objlist, objid,  prefix,  margin = 0, loader_imgsize = 256):
+    def load(self, objlist, objid,  prefix,  margin = 0, loader_imgsize = 512):
 
         self.objname = re.split(r'\\|/',objlist[objid])[-1]
         self.data_workspace = f'{self.outdir}/{self.objname}'
-        os.makedirs(self.data_workspace, exist_ok=True)
 
         directlist = []
         [directlist.append(p) for p in glob.glob(objlist[objid] + '/%s' % prefix,recursive=True) if os.path.isfile(p)]

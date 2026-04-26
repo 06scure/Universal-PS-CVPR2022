@@ -155,21 +155,6 @@ class UniPS(nn.Module):
 
         self.criterionL2 = nn.MSELoss(reduction = 'sum')
 
-    def set_mode(self, mode):
-        if  mode in 'Train':
-            self.mode = 'Train'
-            mode_change(self.encoder, True)
-            mode_change(self.aggregation, True)
-            mode_change(self.prediction, True)
-
-        elif mode in 'Test':
-            self.mode = 'Test'
-            mode_change(self.encoder, False)
-            mode_change(self.aggregation, False)
-            mode_change(self.prediction, False)
-        else:
-            raise ValueError("Mode must be from [Train, Validation, Test]")
-
     def forward(self, batch) -> Tuple[torch.Tensor, float, Optional[np.ndarray], Optional[np.ndarray]]:
         """
         Args:
@@ -179,6 +164,7 @@ class UniPS(nn.Module):
                 mask: [B, 1, H, W]
         Return:
             - loss: scalar loss value for backpropagation / evaluation
+            - mae: scalar mean angular error in degrees for evaluation
             - normal_map: [B, 3, H, W] tensor for visualization, where the 3 channels are predicted normals mapped to [0, 1]
             - error_map: [B, 1, H, W] tensor for visualization, where the single channel is the per-pixel angular error to the GT normal (in degrees)
         """
@@ -189,7 +175,7 @@ class UniPS(nn.Module):
         mask = batch[2].to(self.device) # [B, 1, H, W]
 
         min_nimg = self.min_nimg
-        if self.mode in 'Train' and img.shape[1] >= min_nimg:
+        if self.training is True and img.shape[1] >= min_nimg:
             # 训练阶段随机抽取部分输入视角，增强模型对输入视角数量变化的鲁棒性
             numI = np.random.randint(img.shape[1]-min_nimg+1)+min_nimg
             imgid = np.random.permutation(range(img.shape[1]))[:numI]
@@ -253,7 +239,7 @@ class UniPS(nn.Module):
 
         mae = torch.tensor(0.0, device=self.device)
 
-        if self.mode in 'Train':
+        if self.training is True:
             nout = torch.zeros(B, H * W, 3).to(self.device)
             numMaxSamples = self.num_samples
             mae_sum = torch.tensor(0.0, device=self.device)
@@ -298,7 +284,7 @@ class UniPS(nn.Module):
             nout_high = nout.permute(0, 2, 1).reshape(B, 3, H, W)
             mask_high = m
 
-        if self.mode in 'Test':
+        if self.training is False:
             nout = torch.zeros(B, H * W, 3).to(self.device)
             loss = torch.tensor(0.0, device=self.device)
             numMaxSamples = 10000
@@ -329,7 +315,7 @@ class UniPS(nn.Module):
             mae = angular_error(nout_high, n, mask_high)
 
         # 返回可视化结果
-        if self.mode in 'Test':
+        if self.training is False:
             normal_map = get_normal_map(nout_high, mask_high)
             error_map = get_error_map(nout_high, n, mask_high)
             return loss / B, mae.detach().cpu().item() / B, normal_map.detach().cpu().numpy(), error_map.detach().cpu().numpy()
